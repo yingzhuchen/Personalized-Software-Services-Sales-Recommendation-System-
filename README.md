@@ -44,7 +44,7 @@ graph LR
     Servlet1 --> MySQL
     Servlet2 & Servlet3 --> Redis
     Redis -. Cache Miss .-> MySQL
-
+```
 ## Core Components
 
 * **Web Server:** Apache Tomcat hosting 7 stateless Java Servlets to handle Authentication, Job Search, Recommendation, and Favoriting.
