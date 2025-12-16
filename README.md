@@ -22,28 +22,28 @@ The application follows a standard 3-tier architecture optimized for cloud deplo
 
 ```mermaid
 graph LR
-    Client[Client / Browser] -- HTTP REST --> ALB[AWS Load Balancer]
-    ALB --> EKS[EKS Cluster]
-    
-    subgraph "Backend Services (Tomcat Containers)"
-        Servlet1[Auth Servlet]
-        Servlet2[Recommendation Servlet]
-        Servlet3[Search Servlet]
-    end
-    
-    EKS --> Servlet1 & Servlet2 & Servlet3
-    
-    Servlet2 & Servlet3 -- Keyword Extraction --> OpenAI[OpenAI API]
-    Servlet2 & Servlet3 -- Job Data --> GJobs[Google Jobs API]
-    
-    subgraph "Data Layer"
-        Redis[(Redis Cache)]
-        MySQL[(Amazon RDS)]
-    end
-    
-    Servlet1 --> MySQL
-    Servlet2 & Servlet3 --> Redis
-    Redis -. Cache Miss .-> MySQL
+    Client[Client / Browser] -- HTTP REST --> ALB[AWS Load Balancer]
+    ALB --> EKS[EKS Cluster]
+    
+    subgraph "Backend Services (Tomcat Containers)"
+        Servlet1[Auth Servlet]
+        Servlet2[Product Recommendation Servlet]
+        Servlet3[Product Search Servlet]
+    end
+    
+    EKS --> Servlet1 & Servlet2 & Servlet3
+    
+    Servlet2 & Servlet3 -- Keyword Extraction --> OpenAI[OpenAI API]
+    Servlet2 & Servlet3 -- Product Data --> ExtAPI[External Product API]
+    
+    subgraph "Data Layer"
+        Redis[(Redis Cache)]
+        MySQL[(Amazon RDS)]
+    end
+    
+    Servlet1 --> MySQL
+    Servlet2 & Servlet3 --> Redis
+    Redis -. Cache Miss .-> MySQL
 ```
 ## Core Components
 
@@ -98,34 +98,6 @@ To solve the "cold start" problem inherent in collaborative filtering, this syst
 * MySQL 5.7+
 * Redis
 
-### Local Installation
-
-1.  **Clone the repository**
-    ```bash
-    git clone [https://github.com/your-username/job-recommendation-system.git](https://github.com/your-username/job-recommendation-system.git)
-    cd job-recommendation-system
-    ```
-
-2.  **Configuration**
-    Update `src/main/resources/application.properties` with your credentials:
-    ```properties
-    db.url=jdbc:mysql://localhost:3306/job_db
-    db.user=root
-    db.password=your_password
-    redis.host=localhost
-    api.openai.key=your_openai_key
-    ```
-
-3.  **Build**
-    ```bash
-    mvn clean package
-    ```
-
-4.  **Run with Docker**
-    ```bash
-    docker build -t job-service .
-    docker run -p 8080:8080 --name job-app job-service
-    ```
 
 ## 📝 License
 
