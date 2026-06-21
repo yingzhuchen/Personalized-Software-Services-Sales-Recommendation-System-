@@ -4,7 +4,9 @@ import com.example.jobrec.entity.Item;
 
 import java.sql.*;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 //users click at "save" / "unsave" on frontend, and we will need servlets to update db on backend
@@ -155,6 +157,43 @@ public class MySQLConnection {
         }
         return favoriteItems;
     }
+    public int getTotalItemCount() {
+        if (conn == null) {
+            System.err.println("DB connection failed");
+            return 0;
+        }
+        String sql = "SELECT COUNT(*) FROM items";
+        try {
+            PreparedStatement statement = conn.prepareStatement(sql);
+            ResultSet rs = statement.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
+    public Map<String, Integer> getKeywordDocumentFrequencies() {
+        if (conn == null) {
+            System.err.println("DB connection failed");
+            return Collections.emptyMap();
+        }
+        Map<String, Integer> documentFrequencies = new HashMap<>();
+        String sql = "SELECT keyword, COUNT(DISTINCT item_id) AS df FROM keywords GROUP BY keyword";
+        try {
+            PreparedStatement statement = conn.prepareStatement(sql);
+            ResultSet rs = statement.executeQuery();
+            while (rs.next()) {
+                documentFrequencies.put(rs.getString("keyword"), rs.getInt("df"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return documentFrequencies;
+    }
+
     public Set<String> getKeywords(String itemId) {
         if (conn == null) {
             System.err.println("DB connection failed");
