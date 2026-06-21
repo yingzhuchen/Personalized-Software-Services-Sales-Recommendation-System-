@@ -4,38 +4,30 @@ import com.example.jobrec.external.SerpAPIClient;
 import com.example.jobrec.db.MySQLConnection;
 import com.example.jobrec.entity.Item;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 public class Recommendation {
-    private static final int TOP_KEYWORD_COUNT = 3;
+    private final RecommendationProfileService profileService = new RecommendationProfileService();
 
     public List<Item> recommendItems(String userId, double lat, double lon) {
         List<Item> recommendedItems = new ArrayList<>();
 
         MySQLConnection connection = new MySQLConnection();
         Set<String> favoritedItemIds = connection.getFavoriteItemIds(userId);
-
-        Map<String, Integer> termFrequencies = new HashMap<>();
-        for (String itemId : favoritedItemIds) {
-            Set<String> keywords = connection.getKeywords(itemId);
-            for (String keyword : keywords) {
-                termFrequencies.put(keyword, termFrequencies.getOrDefault(keyword, 0) + 1);
-            }
-        }
-
-        int totalDocuments = connection.getTotalItemCount();
-        Map<String, Integer> documentFrequencies = connection.getKeywordDocumentFrequencies();
         connection.close();
 
-        TFIDF tfidf = new TFIDF();
-        Map<String, Double> tfidfScores = tfidf.computeScores(termFrequencies, documentFrequencies, totalDocuments);
-        List<Map.Entry<String, Double>> keywordList = tfidf.getTopKeywords(tfidfScores, TOP_KEYWORD_COUNT);
+        List<String> topKeywords = profileService.getTopKeywords(userId);
+        if (topKeywords.isEmpty()) {
+            return recommendedItems;
+        }
 
         Set<String> visitedItemIds = new HashSet<>();
         SerpAPIClient client = new SerpAPIClient();
-        for (Map.Entry<String, Double> keyword : keywordList) {
-            List<Item> items = client.search(lat, lon, keyword.getKey());
-
+        for (String keyword : topKeywords) {
+            List<Item> items = client.search(lat, lon, keyword);
             for (Item item : items) {
                 if (!favoritedItemIds.contains(item.getId()) && !visitedItemIds.contains(item.getId())) {
                     recommendedItems.add(item);
@@ -46,4 +38,3 @@ public class Recommendation {
         return recommendedItems;
     }
 }
-
