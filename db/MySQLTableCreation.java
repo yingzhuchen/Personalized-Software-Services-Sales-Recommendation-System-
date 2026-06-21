@@ -26,7 +26,13 @@ public class MySQLTableCreation {
 
             // Step 2 Drop tables in case they exist.
             Statement statement = conn.createStatement();
-            String sql = "DROP TABLE IF EXISTS keywords";
+            String sql = "DROP TABLE IF EXISTS keyword_stats";
+            statement.executeUpdate(sql);
+
+            sql = "DROP TABLE IF EXISTS corpus_stats";
+            statement.executeUpdate(sql);
+
+            sql = "DROP TABLE IF EXISTS keywords";
             statement.executeUpdate(sql);
 
             sql = "DROP TABLE IF EXISTS history";
@@ -74,6 +80,23 @@ public class MySQLTableCreation {
                     + "FOREIGN KEY (user_id) REFERENCES users(user_id),"
                     + "FOREIGN KEY (item_id) REFERENCES items(item_id)"
                     + ")";
+            statement.executeUpdate(sql);
+
+            sql = "CREATE TABLE keyword_stats ("
+                    + "keyword VARCHAR(255) NOT NULL,"
+                    + "document_frequency INT NOT NULL DEFAULT 0,"
+                    + "PRIMARY KEY (keyword)"
+                    + ")";
+            statement.executeUpdate(sql);
+
+            sql = "CREATE TABLE corpus_stats ("
+                    + "stat_key VARCHAR(64) NOT NULL,"
+                    + "stat_value BIGINT NOT NULL,"
+                    + "PRIMARY KEY (stat_key)"
+                    + ")";
+            statement.executeUpdate(sql);
+
+            sql = "INSERT INTO corpus_stats (stat_key, stat_value) VALUES ('total_items', 0)";
             statement.executeUpdate(sql);
 
             // Step 4: insert fake user 1111/3229c1097c00d497a0fd282d586be050

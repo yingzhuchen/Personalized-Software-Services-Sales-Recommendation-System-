@@ -6,6 +6,7 @@ import com.example.jobrec.db.MySQLConnection;
 import com.example.jobrec.entity.HistoryRequestBody;
 import com.example.jobrec.entity.Item;
 import com.example.jobrec.entity.ResultResponse;
+import com.example.jobrec.recommendation.RecommendationProfileService;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -34,13 +35,14 @@ public class HistoryServlet extends HttpServlet {
         HistoryRequestBody body = mapper.readValue(request.getReader(), HistoryRequestBody.class);
 
         MySQLConnection connection = new MySQLConnection();
-        //use the setFavoriteItem() that just implemented in MySQLConnection
         connection.setFavoriteItems(body.userId, body.favorite);
         connection.close();
-        //check Redis
+
         RedisConnection redis = new RedisConnection();
         redis.deleteFavoriteResult(body.userId);
         redis.close();
+        RecommendationProfileService.invalidateUserProfile(body.userId);
+        RecommendationProfileService.invalidateCorpusCache();
 
         ResultResponse resultResponse = new ResultResponse("SUCCESS");
         mapper.writeValue(response.getWriter(), resultResponse);
@@ -95,10 +97,10 @@ public class HistoryServlet extends HttpServlet {
         connection.unsetFavoriteItems(body.userId, body.favorite.getId());
         connection.close();
 
-        //check Redis
         RedisConnection redis = new RedisConnection();
         redis.deleteFavoriteResult(body.userId);
         redis.close();
+        RecommendationProfileService.invalidateUserProfile(body.userId);
 
         ResultResponse resultResponse = new ResultResponse("SUCCESS");
         mapper.writeValue(response.getWriter(), resultResponse);
