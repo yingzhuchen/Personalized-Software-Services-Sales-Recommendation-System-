@@ -3,8 +3,12 @@ package com.example.jobrec.db;
 import com.example.jobrec.entity.Item;
 
 import java.sql.*;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 //users click at "save" / "unsave" on frontend, and we will need servlets to update db on backend
@@ -31,45 +35,48 @@ public class MySQLConnection {
             }
         }
     }
-    public void saveItem(Item item) {
+    public boolean saveItem(Item item) {
         if (conn == null) {
             System.err.println("DB connection failed");
-            return;
+            return false;
         }
-        String insertItemSql = "INSERT IGNORE INTO items VALUES (?, ?, ?, ?)"; //"?" : placeholder, columns
-        //ignore: if there's a same item existed, we ignore it
+        boolean corpusUpdated = false;
+        String insertItemSql = "INSERT IGNORE INTO items VALUES (?, ?, ?, ?)";
         try {
             PreparedStatement statement = conn.prepareStatement(insertItemSql);
             statement.setString(1, item.getId());
             statement.setString(2, item.getTitle());
             statement.setString(3, item.getLocation());
-            statement.setString(4, item.getUrl()); //SQL starts from 1, not 0
-            statement.executeUpdate(); //insert data completed
+            statement.setString(4, item.getUrl());
+            if (statement.executeUpdate() == 1) {
+                incrementTotalItems();
+                corpusUpdated = true;
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
 
-        String insertKeywordSql = "INSERT IGNORE INTO keywords VALUES (?, ?)"; //"?" : placeholder, columns
-        // ignore: if there's a same item existed, we ignore it
+        String insertKeywordSql = "INSERT IGNORE INTO keywords VALUES (?, ?)";
         try {
             for (String keyword : item.getKeywords()) {
                 PreparedStatement statement = conn.prepareStatement(insertKeywordSql);
-                statement = conn.prepareStatement(insertKeywordSql);
                 statement.setString(1, item.getId());
                 statement.setString(2, keyword);
-                statement.executeUpdate();
-            } //we use for loop to insert keywords
+                if (statement.executeUpdate() == 1) {
+                    incrementKeywordDocumentFrequency(keyword);
+                    corpusUpdated = true;
+                }
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
-
+        return corpusUpdated;
     }
     public void setFavoriteItems(String userId, Item item) {
         if (conn == null) {
             System.err.println("DB connection failed");
             return;
         }
-        //save item to db first
         saveItem(item);
         String sql = "INSERT IGNORE INTO history (user_id, item_id) VALUES (?, ?)"; //time will automatically filled in
         try {
@@ -155,6 +162,107 @@ public class MySQLConnection {
         }
         return favoriteItems;
     }
+    public int getTotalItemCount() {
+        if (conn == null) {
+            System.err.println("DB connection failed");
+            return 0;
+        }
+        String sql = "SELECT stat_value FROM corpus_stats WHERE stat_key = 'total_items'";
+        try {
+            PreparedStatement statement = conn.prepareStatement(sql);
+            ResultSet rs = statement.executeQuery();
+            if (rs.next()) {
+                return rs.getInt("stat_value");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
+    public Map<String, Integer> getDocumentFrequenciesForKeywords(List<String> keywords) {
+        if (conn == null || keywords.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, Integer> documentFrequencies = new HashMap<>();
+        String sql = buildInClauseQuery(
+                "SELECT keyword, document_frequency FROM keyword_stats WHERE keyword IN ", keywords.size());
+        try {
+            PreparedStatement statement = conn.prepareStatement(sql);
+            bindStringParameters(statement, keywords);
+            ResultSet rs = statement.executeQuery();
+            while (rs.next()) {
+                documentFrequencies.put(rs.getString("keyword"), rs.getInt("document_frequency"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return documentFrequencies;
+    }
+
+    public Map<String, Integer> getTermFrequenciesForItems(Set<String> itemIds) {
+        if (conn == null || itemIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<String> itemIdList = new ArrayList<>(itemIds);
+        Map<String, Integer> termFrequencies = new HashMap<>();
+        String sql = buildInClauseQuery(
+                "SELECT keyword, COUNT(*) AS freq FROM keywords WHERE item_id IN ", itemIdList.size())
+                + " GROUP BY keyword";
+        try {
+            PreparedStatement statement = conn.prepareStatement(sql);
+            bindStringParameters(statement, itemIdList);
+            ResultSet rs = statement.executeQuery();
+            while (rs.next()) {
+                termFrequencies.put(rs.getString("keyword"), rs.getInt("freq"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return termFrequencies;
+    }
+
+    private void incrementTotalItems() {
+        String sql = "INSERT INTO corpus_stats (stat_key, stat_value) VALUES ('total_items', 1) "
+                + "ON DUPLICATE KEY UPDATE stat_value = stat_value + 1";
+        try {
+            PreparedStatement statement = conn.prepareStatement(sql);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void incrementKeywordDocumentFrequency(String keyword) {
+        String sql = "INSERT INTO keyword_stats (keyword, document_frequency) VALUES (?, 1) "
+                + "ON DUPLICATE KEY UPDATE document_frequency = document_frequency + 1";
+        try {
+            PreparedStatement statement = conn.prepareStatement(sql);
+            statement.setString(1, keyword);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private String buildInClauseQuery(String prefix, int size) {
+        StringBuilder sql = new StringBuilder(prefix).append("(");
+        for (int i = 0; i < size; i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            sql.append("?");
+        }
+        sql.append(")");
+        return sql.toString();
+    }
+
+    private void bindStringParameters(PreparedStatement statement, List<String> values) throws SQLException {
+        for (int i = 0; i < values.size(); i++) {
+            statement.setString(i + 1, values.get(i));
+        }
+    }
+
     public Set<String> getKeywords(String itemId) {
         if (conn == null) {
             System.err.println("DB connection failed");
