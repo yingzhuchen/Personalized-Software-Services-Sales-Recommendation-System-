@@ -60,13 +60,13 @@ public class RecommendationProfileService {
         redisCacheService.deleteCorpusCache();
     }
 
-    public String getCachedSearchResult(double lat, double lon) {
-        return redisCacheService.getSearchResult(lat, lon, null);
+    public String getCachedSearchResult(double lat, double lon, String keyword) {
+        return redisCacheService.getSearchResult(lat, lon, keyword);
     }
 
-    public void cacheSearchResult(double lat, double lon, List<Item> items) {
+    public void cacheSearchResult(double lat, double lon, String keyword, List<Item> items) {
         try {
-            redisCacheService.setSearchResult(lat, lon, null, objectMapper.writeValueAsString(items));
+            redisCacheService.setSearchResult(lat, lon, keyword, objectMapper.writeValueAsString(items));
         } catch (Exception e) {
             e.printStackTrace();
         }

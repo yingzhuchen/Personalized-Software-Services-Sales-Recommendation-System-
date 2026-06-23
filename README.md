@@ -8,9 +8,9 @@
 
 ## 📖 Introduction
 
-This project is a high-availability, cloud-native web service designed to provide personalized job recommendations. Addressing the challenge of information overload in modern recruitment, the system utilizes **Content-Based Filtering** enhanced by **OpenAI** for keyword extraction and **TF-IDF** for relevance ranking.
+This project is a high-availability, cloud-native web service designed to provide **personalized product recommendations** for software and services sales. Addressing information overload in e-commerce, the system utilizes **Content-Based Filtering** enhanced by **EdenAI** for keyword extraction and **TF-IDF** for relevance ranking.
 
-The backend is engineered using **Java Servlets** and **RESTful APIs**, deployed on **Amazon EKS (Kubernetes)** for scalability, and leverages **Redis** for high-performance caching.
+The backend is built with **Spring Boot** and **RESTful APIs**, deployed on **Amazon EKS (Kubernetes)** for scalability, and leverages **Redis** with LRU eviction for high-performance caching.
 
 ---
 
@@ -47,12 +47,13 @@ graph LR
 ```
 ## Core Components
 
-* **Web Server:** Apache Tomcat hosting 7 stateless Java Servlets to handle Authentication, Job Search, Recommendation, and Favoriting.
-* **Database:** Amazon RDS (MySQL) stores user profiles and interaction history with optimized schema indexes.
-* **Cache:** Redis acts as a cache-aside layer to store hot job data and search results.
+* **Web Server:** Spring Boot REST controllers for Authentication, Product Search, Recommendation, and Favoriting.
+* **Database:** Amazon RDS (MySQL) stores user profiles, product metadata, and interaction history.
+* **Cache:** Redis acts as a cache-aside layer with LRU eviction to store hot product data and search results.
 * **External APIs:**
-    * **Google Jobs API:** Fetches real-time, location-aware job listings.
-    * **OpenAI API:** Analyzes text to extract technical keywords from job descriptions.
+    * **SerpAPI (Google Shopping):** Fetches real-time, location-aware product listings.
+    * **EdenAI (IBM NLP):** Extracts keywords from product descriptions.
+    * **Google Geocoding API:** Converts lat/lon to location for localized product search.
 
 ## 🛠 Tech Stack
 
@@ -69,9 +70,9 @@ graph LR
 
 ### 1. Intelligent Recommendation Engine
 To solve the "cold start" problem inherent in collaborative filtering, this system uses a **Content-Based** approach:
-* **Keyword Extraction:** Utilizes the **OpenAI API** to parse job descriptions favored by the user, extracting core skills (e.g., "Java", "Kubernetes", "React").
-* **Vectorization:** Constructs **TF-IDF** (Term Frequency-Inverse Document Frequency) vectors for both user profiles and candidate jobs.
-* **Similarity Matching:** Calculates the cosine similarity between the user's profile vector and job vectors to rank the most relevant opportunities.
+* **Keyword Extraction:** EdenAI parses product descriptions favored by the user, extracting core attributes (e.g., "SaaS", "CRM", "Analytics").
+* **Vectorization:** Constructs **TF-IDF** vectors for user profiles and candidate products.
+* **Ranking:** Ranks products by TF-IDF keyword scores and searches SerpAPI for similar items.
 
 ### 2. High-Performance Caching
 * **Strategy:** Implemented a **Redis Cache-Aside** pattern to handle frequent read requests.

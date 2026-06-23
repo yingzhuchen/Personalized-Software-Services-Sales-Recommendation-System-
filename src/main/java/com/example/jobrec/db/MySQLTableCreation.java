@@ -51,7 +51,10 @@ public class MySQLTableCreation {
                     + "name VARCHAR(255),"
                     + "address VARCHAR(255),"
                     + "url VARCHAR(255),"
-                    + "PRIMARY KEY (item_id)" //primary key for items
+                    + "seller VARCHAR(255),"
+                    + "description TEXT,"
+                    + "source_type VARCHAR(32) NOT NULL DEFAULT 'innova_catalog',"
+                    + "PRIMARY KEY (item_id)"
                     + ")";
             statement.executeUpdate(sql);
 
@@ -96,8 +99,10 @@ public class MySQLTableCreation {
                     + ")";
             statement.executeUpdate(sql);
 
-            sql = "INSERT INTO corpus_stats (stat_key, stat_value) VALUES ('total_items', 0)";
+            sql = "INSERT INTO corpus_stats (stat_key, stat_value) VALUES ('total_items', 5)";
             statement.executeUpdate(sql);
+
+            seedInnovaCatalog(statement);
 
             // Step 4: insert fake user 1111/3229c1097c00d497a0fd282d586be050
             sql = "INSERT INTO users VALUES('1111', '3229c1097c00d497a0fd282d586be050', 'John', 'Smith')";
@@ -109,7 +114,62 @@ public class MySQLTableCreation {
         }
     }
 
+    private static void seedInnovaCatalog(Statement statement) throws SQLException {
+        insertCatalogProduct(statement,
+                "innova-crm",
+                "INNOVA CRM Platform",
+                "$99/month",
+                "https://innova.ai/products/crm",
+                "INNOVA AI",
+                "Cloud CRM for B2B software and services sales teams.",
+                new String[]{"crm", "sales", "customer", "saas"});
+        insertCatalogProduct(statement,
+                "innova-analytics",
+                "INNOVA Analytics Suite",
+                "$199/month",
+                "https://innova.ai/products/analytics",
+                "INNOVA AI",
+                "Business intelligence dashboards and product usage analytics.",
+                new String[]{"analytics", "dashboard", "bi", "data"});
+        insertCatalogProduct(statement,
+                "innova-ai-platform",
+                "INNOVA AI Platform",
+                "$499/month",
+                "https://innova.ai/products/ai-platform",
+                "INNOVA AI",
+                "Enterprise AI platform with NLP and recommendation services.",
+                new String[]{"ai", "nlp", "ml", "recommendation"});
+        insertCatalogProduct(statement,
+                "innova-cloud-migrate",
+                "INNOVA Cloud Migration Service",
+                "Custom pricing",
+                "https://innova.ai/products/cloud-migration",
+                "INNOVA AI",
+                "Managed cloud migration for enterprise software workloads.",
+                new String[]{"cloud", "migration", "aws", "enterprise"});
+        insertCatalogProduct(statement,
+                "innova-security",
+                "INNOVA Enterprise Security Suite",
+                "$299/month",
+                "https://innova.ai/products/security",
+                "INNOVA AI",
+                "Security and compliance tooling for regulated software vendors.",
+                new String[]{"security", "compliance", "enterprise", "software"});
+    }
+
+    private static void insertCatalogProduct(Statement statement, String id, String name, String price,
+                                             String url, String seller, String description,
+                                             String[] keywords) throws SQLException {
+        String sql = "INSERT INTO items (item_id, name, address, url, seller, description, source_type) "
+                + "VALUES ('" + id + "', '" + name + "', '" + price + "', '" + url + "', '" + seller + "', '"
+                + description + "', 'innova_catalog')";
+        statement.executeUpdate(sql);
+
+        for (String keyword : keywords) {
+            statement.executeUpdate("INSERT INTO keywords VALUES ('" + id + "', '" + keyword + "')");
+            statement.executeUpdate("INSERT INTO keyword_stats (keyword, document_frequency) VALUES ('"
+                    + keyword + "', 1) ON DUPLICATE KEY UPDATE document_frequency = document_frequency + 1");
+        }
+    }
+
 }
-
-
-

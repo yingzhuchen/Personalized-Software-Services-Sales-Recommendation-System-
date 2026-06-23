@@ -41,14 +41,19 @@ public class MySQLConnection {
             return false;
         }
         boolean corpusUpdated = false;
-        String insertItemSql = "INSERT IGNORE INTO items VALUES (?, ?, ?, ?)";
+        String insertItemSql = "INSERT IGNORE INTO items "
+                + "(item_id, name, address, url, seller, description, source_type) VALUES (?, ?, ?, ?, ?, ?, ?)";
         try {
             PreparedStatement statement = conn.prepareStatement(insertItemSql);
+            String sourceType = item.getSourceType() == null ? Item.SOURCE_MARKET : item.getSourceType();
             statement.setString(1, item.getId());
             statement.setString(2, item.getTitle());
-            statement.setString(3, item.getLocation());
+            statement.setString(3, item.getPrice());
             statement.setString(4, item.getUrl());
-            if (statement.executeUpdate() == 1) {
+            statement.setString(5, item.getSeller());
+            statement.setString(6, item.getDescription());
+            statement.setString(7, sourceType);
+            if (statement.executeUpdate() == 1 && Item.SOURCE_INNOVA_CATALOG.equals(sourceType)) {
                 incrementTotalItems();
                 corpusUpdated = true;
             }
@@ -58,11 +63,13 @@ public class MySQLConnection {
 
         String insertKeywordSql = "INSERT IGNORE INTO keywords VALUES (?, ?)";
         try {
+            String sourceType = item.getSourceType() == null ? Item.SOURCE_MARKET : item.getSourceType();
             for (String keyword : item.getKeywords()) {
                 PreparedStatement statement = conn.prepareStatement(insertKeywordSql);
                 statement.setString(1, item.getId());
                 statement.setString(2, keyword);
-                if (statement.executeUpdate() == 1) {
+                if (statement.executeUpdate() == 1
+                        && Item.SOURCE_INNOVA_CATALOG.equals(sourceType)) {
                     incrementKeywordDocumentFrequency(keyword);
                     corpusUpdated = true;
                 }
@@ -137,24 +144,14 @@ public class MySQLConnection {
         Set<Item> favoriteItems = new HashSet<>();
         Set<String> favoriteItemIds = getFavoriteItemIds(userId);
 
-        String sql = "SELECT * FROM items WHERE item_id = ?";
+        String sql = "SELECT item_id, name, address, url, seller, description, source_type FROM items WHERE item_id = ?";
         try {
             PreparedStatement statement = conn.prepareStatement(sql);
             for (String itemId : favoriteItemIds) {
                 statement.setString(1, itemId);
                 ResultSet rs = statement.executeQuery();
                 if (rs.next()) {
-                    favoriteItems.add(new Item(rs.getString("job_id")
-                            ,rs.getString("name")
-                            ,null
-                            ,rs.getString("address")
-                            ,null
-                            ,null
-                            ,null
-                            ,rs.getString("url")
-                            , getKeywords(itemId)
-                            ,true));
-
+                    favoriteItems.add(buildItemFromRow(rs, getKeywords(itemId), true));
                 }
             }
         } catch (SQLException e) {
@@ -163,21 +160,67 @@ public class MySQLConnection {
         return favoriteItems;
     }
     public int getTotalItemCount() {
+        return getCatalogItemCount();
+    }
+
+    public int getCatalogItemCount() {
         if (conn == null) {
             System.err.println("DB connection failed");
             return 0;
         }
-        String sql = "SELECT stat_value FROM corpus_stats WHERE stat_key = 'total_items'";
+        String sql = "SELECT COUNT(*) FROM items WHERE source_type = ?";
         try {
             PreparedStatement statement = conn.prepareStatement(sql);
+            statement.setString(1, Item.SOURCE_INNOVA_CATALOG);
             ResultSet rs = statement.executeQuery();
             if (rs.next()) {
-                return rs.getInt("stat_value");
+                return rs.getInt(1);
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
         return 0;
+    }
+
+    public List<Item> searchCatalogProducts(String keyword) {
+        if (conn == null) {
+            System.err.println("DB connection failed");
+            return Collections.emptyList();
+        }
+
+        List<Item> products = new ArrayList<>();
+        boolean hasKeyword = keyword != null && !keyword.trim().isEmpty();
+        String sql;
+        if (hasKeyword) {
+            sql = "SELECT DISTINCT i.item_id, i.name, i.address, i.url, i.seller, i.description, i.source_type "
+                    + "FROM items i "
+                    + "LEFT JOIN keywords k ON i.item_id = k.item_id "
+                    + "WHERE i.source_type = ? "
+                    + "AND (k.keyword LIKE ? OR i.name LIKE ? OR i.description LIKE ?)";
+        } else {
+            sql = "SELECT i.item_id, i.name, i.address, i.url, i.seller, i.description, i.source_type "
+                    + "FROM items i WHERE i.source_type = ?";
+        }
+
+        try {
+            PreparedStatement statement = conn.prepareStatement(sql);
+            statement.setString(1, Item.SOURCE_INNOVA_CATALOG);
+            if (hasKeyword) {
+                String pattern = "%" + keyword.trim() + "%";
+                statement.setString(2, pattern);
+                statement.setString(3, pattern);
+                statement.setString(4, pattern);
+            }
+
+            ResultSet rs = statement.executeQuery();
+            while (rs.next()) {
+                String itemId = rs.getString("item_id");
+                products.add(buildItemFromRow(rs, getKeywords(itemId), false));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return products;
     }
 
     public Map<String, Integer> getDocumentFrequenciesForKeywords(List<String> keywords) {
@@ -186,13 +229,17 @@ public class MySQLConnection {
         }
         Map<String, Integer> documentFrequencies = new HashMap<>();
         String sql = buildInClauseQuery(
-                "SELECT keyword, document_frequency FROM keyword_stats WHERE keyword IN ", keywords.size());
+                "SELECT k.keyword, COUNT(DISTINCT k.item_id) AS df "
+                        + "FROM keywords k JOIN items i ON k.item_id = i.item_id "
+                        + "WHERE i.source_type = 'innova_catalog' AND k.keyword IN ",
+                keywords.size())
+                + " GROUP BY k.keyword";
         try {
             PreparedStatement statement = conn.prepareStatement(sql);
             bindStringParameters(statement, keywords);
             ResultSet rs = statement.executeQuery();
             while (rs.next()) {
-                documentFrequencies.put(rs.getString("keyword"), rs.getInt("document_frequency"));
+                documentFrequencies.put(rs.getString("keyword"), rs.getInt("df"));
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -261,6 +308,21 @@ public class MySQLConnection {
         for (int i = 0; i < values.size(); i++) {
             statement.setString(i + 1, values.get(i));
         }
+    }
+
+    private Item buildItemFromRow(ResultSet rs, Set<String> keywords, boolean favorite) throws SQLException {
+        return new Item(
+                rs.getString("item_id"),
+                rs.getString("name"),
+                rs.getString("seller"),
+                rs.getString("address"),
+                rs.getString("seller"),
+                rs.getString("source_type"),
+                rs.getString("description"),
+                null,
+                rs.getString("url"),
+                keywords,
+                favorite);
     }
 
     public Set<String> getKeywords(String itemId) {

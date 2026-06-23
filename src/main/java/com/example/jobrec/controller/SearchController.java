@@ -23,6 +23,7 @@ public class SearchController {
     public List<Item> search(@RequestParam("user_id") String userId,
                              @RequestParam("lat") double lat,
                              @RequestParam("lon") double lon,
+                             @RequestParam(value = "keyword", required = false) String keyword,
                              HttpSession session) {
         SessionUtils.requireSession(session);
 
@@ -30,7 +31,7 @@ public class SearchController {
         Set<String> favoritedItemIds = connection.getFavoriteItemIds(userId);
         connection.close();
 
-        List<Item> items = recommendationService.searchJobs(lat, lon);
+        List<Item> items = recommendationService.searchProducts(lat, lon, keyword);
         for (Item item : items) {
             item.setFavorite(favoritedItemIds.contains(item.getId()));
         }

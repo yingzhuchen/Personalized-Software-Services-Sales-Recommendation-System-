@@ -4,151 +4,135 @@ import com.example.jobrec.entity.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.HttpEntity;
+import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
-import org.apache.http.client.ResponseHandler;
 
-import javax.json.Json;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
-import java.util.*;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
 
 public class SerpAPIClient {
-    private static final String URL_TEMPLATE = "https://serpapi.com/search?engine=google_jobs&q=%s&uule=%s&api_key=%s";  //%s : String 占位符
+    private static final String URL_TEMPLATE =
+            "https://serpapi.com/search?engine=google_shopping&q=%s&location=%s&api_key=%s";
 
     private static final String API_KEY = "YOUR_API_KEY";
-
-    public static void main(String[] args) {
-        SerpAPIClient client = new SerpAPIClient();
-
-        List<Item> list = client.search(37.334886, -122.008988, "software engineer");
-        for (Item item: list) {
-            System.out.println(item.getKeywords());
-            break;
-        }
-    }
-
-    private static final String DEFAULT_KEYWORD = "engineer";
+    private static final String DEFAULT_KEYWORD = "software";
 
     public List<Item> search(Double lat, Double lon, String keyword) {
-        if (keyword == null) {
-            keyword = DEFAULT_KEYWORD; //if keyword == null, give it a DEFAULT_KEYWORD
+        if (keyword == null || keyword.isEmpty()) {
+            keyword = DEFAULT_KEYWORD;
         }
 
-        try {
-            keyword = URLEncoder.encode(keyword, "UTF-8"); //transfer input keyword to URL format
-        } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
-        }
-
-        String address = "";
-
-//        System.out.println("Keyword Parsed");
-
+        String encodedKeyword = URLEncoder.encode(keyword, StandardCharsets.UTF_8);
         GeoConverterClient converterClient = new GeoConverterClient();
-        String uuleCode = converterClient.convert(lat, lon);
+        String location = converterClient.getLocationName(lat, lon);
+        if (location.isEmpty()) {
+            location = "United States";
+        }
+        String encodedLocation = URLEncoder.encode(location, StandardCharsets.UTF_8);
+        String url = String.format(URL_TEMPLATE, encodedKeyword, encodedLocation, API_KEY);
 
-        String url = String.format(URL_TEMPLATE, keyword, uuleCode, API_KEY); //format URL from above
-
-        CloseableHttpClient httpClient = HttpClients.createDefault(); //create a new httpclient object
-
-//        System.out.println("httpClient Created");
-
-        // Create a custom response handler, get response in ideal format
+        CloseableHttpClient httpClient = HttpClients.createDefault();
         ResponseHandler<List<Item>> responseHandler = response -> {
             if (response.getStatusLine().getStatusCode() != 200) {
                 return Collections.emptyList();
             }
-
-//            System.out.println("200 OK");
 
             HttpEntity entity = response.getEntity();
             if (entity == null) {
                 return Collections.emptyList();
             }
 
-//            System.out.println("Entity OK");
-
             ObjectMapper mapper = new ObjectMapper();
-
             JsonNode root = mapper.readTree(entity.getContent());
-            JsonNode results = root.get("jobs_results");
-            Iterator<JsonNode> result = results.elements();
-
-//            System.out.println("Result OK");
+            JsonNode results = root.get("shopping_results");
+            if (results == null || !results.isArray()) {
+                return Collections.emptyList();
+            }
 
             List<Item> items = new ArrayList<>();
-
+            Iterator<JsonNode> result = results.elements();
             while (result.hasNext()) {
-                JsonNode itemNode = result.next();
-                Item item = extract(itemNode);
-                System.out.println(item.toString());
-                items.add(item);
+                items.add(extract(result.next()));
             }
 
             extractKeywords(items);
-
             return items;
         };
-
-//        System.out.println("Response Handler Created");
 
         try {
             return httpClient.execute(new HttpGet(url), responseHandler);
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-//        System.out.println("Failed");
-
         return Collections.emptyList();
     }
 
-    private static Item extract (JsonNode itemNode) {
-        String job_id = itemNode.get("job_id").asText();
-        String title = itemNode.get("title").asText();
-        String companyName = itemNode.get("company_name").asText();
-        String location = itemNode.get("location").asText();
-        String via = itemNode.get("via").asText();
-        String description = itemNode.get("description").asText();
-        List<String> highlights = new ArrayList<String>();
-        String url = "";
-        Set<String> keywords = new HashSet<>();
+    private Item extract(JsonNode itemNode) {
+        String productId = itemNode.has("product_id")
+                ? itemNode.get("product_id").asText()
+                : String.valueOf(itemNode.path("position").asInt());
+        String title = itemNode.path("title").asText("");
+        String seller = itemNode.path("source").asText("");
+        String price = itemNode.has("price")
+                ? itemNode.get("price").asText()
+                : itemNode.path("extracted_price").asText("");
+        String source = seller;
+        String url = itemNode.path("link").asText("");
+        String description = buildDescription(title, price, seller, itemNode);
 
-        //Store all job highlights to highlights
-        JsonNode highlights_node = itemNode.get("job_highlights");
-        Iterator<JsonNode> highlight = highlights_node.elements();
-        while (highlight.hasNext()) {
-            Iterator<JsonNode> item = highlight.next().get("items").elements();
-            while (item.hasNext()) {
-                highlights.add(item.next().asText());
+        List<String> features = new ArrayList<>();
+        Set<String> keywords = new HashSet<>();
+        if (itemNode.has("extensions") && itemNode.get("extensions").isArray()) {
+            Iterator<JsonNode> extensions = itemNode.get("extensions").elements();
+            while (extensions.hasNext()) {
+                String extension = extensions.next().asText();
+                features.add(extension);
+                keywords.add(extension);
             }
         }
-
-        //Get a link for application
-        Iterator<JsonNode> url_it = itemNode.get("related_links").elements();
-        if (url_it.hasNext()) {
-            url = url_it.next().get("link").asText();
+        if (itemNode.has("delivery")) {
+            features.add(itemNode.get("delivery").asText());
+        }
+        if (itemNode.has("rating")) {
+            features.add("Rating: " + itemNode.get("rating").asText());
         }
 
-        //Store extension(keywords) to keywords
-        Iterator<JsonNode> extension_it = itemNode.get("extensions").elements();
-        while (extension_it.hasNext()) {
-            keywords.add(extension_it.next().asText());
-        }
-
-        return new Item(job_id, title, companyName, location, via, description, highlights, url, keywords, false);
+        return new Item(productId, title, seller, price, source, Item.SOURCE_MARKET,
+                description, features, url, keywords, false);
     }
 
-    private static void extractKeywords(List<Item> items) {
+    private String buildDescription(String title, String price, String seller, JsonNode itemNode) {
+        StringBuilder description = new StringBuilder(title);
+        if (!price.isEmpty()) {
+            description.append(". Price: ").append(price);
+        }
+        if (!seller.isEmpty()) {
+            description.append(". Sold by ").append(seller);
+        }
+        if (itemNode.has("reviews")) {
+            description.append(". Reviews: ").append(itemNode.get("reviews").asText());
+        }
+        return description.toString();
+    }
+
+    private void extractKeywords(List<Item> items) {
         EdenAI client = new EdenAI();
-        for (Item item: items) {
-            String article = item.getDescription() + ". " + String.join(". ", item.getJobHighlights());
-            Set<String> keywords = new HashSet<>();
+        for (Item item : items) {
+            String article = item.getDescription();
+            if (item.getFeatures() != null && !item.getFeatures().isEmpty()) {
+                article = article + ". " + String.join(". ", item.getFeatures());
+            }
+            Set<String> keywords = new HashSet<>(item.getKeywords());
             keywords.addAll(client.extract(article, 3));
-            keywords.addAll(item.getKeywords());
             item.setKeywords(keywords);
         }
     }

@@ -9,25 +9,20 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 public class GeoConverterClient {
-    private static final String URL_TEMPLATE = "https://maps.googleapis.com/maps/api/geocode/json?latlng=%s&key=%s";
+    private static final String URL_TEMPLATE =
+            "https://maps.googleapis.com/maps/api/geocode/json?latlng=%s&key=%s";
 
     private static final String API_KEY = "YOUR_API_KEY";
 
-    public static void main(String[] args) {
-        GeoConverterClient client = new GeoConverterClient();
-        // For API test
-        System.out.println(client.convert(37.334886, -122.008988));
-    }
-
-    public String convert(Double lat, Double lon) {
-        String latlng = lat.toString() + "," + lon.toString();
-
+    public String getLocationName(Double lat, Double lon) {
+        String latlng = lat + "," + lon;
         String url = String.format(URL_TEMPLATE, latlng, API_KEY);
 
         CloseableHttpClient httpClient = HttpClients.createDefault();
-
         ResponseHandler<String> responseHandler = response -> {
             if (response.getStatusLine().getStatusCode() != 200) {
                 return "";
@@ -38,16 +33,11 @@ public class GeoConverterClient {
             }
 
             ObjectMapper mapper = new ObjectMapper();
-
-            try {
-                JsonNode root = mapper.readTree(entity.getContent());
-                JsonNode plusCode = root.get("plus_code");
-                String uule = plusCode.get("global_code").asText();
-                return uule;
-            } catch (UnknownError e) {
-                e.printStackTrace();
+            JsonNode root = mapper.readTree(entity.getContent());
+            JsonNode results = root.get("results");
+            if (results != null && results.isArray() && results.size() > 0) {
+                return results.get(0).get("formatted_address").asText("");
             }
-
             return "";
         };
 
@@ -56,7 +46,10 @@ public class GeoConverterClient {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
         return "";
+    }
+
+    public String convert(Double lat, Double lon) {
+        return getLocationName(lat, lon);
     }
 }
