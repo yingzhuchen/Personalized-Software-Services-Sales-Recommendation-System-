@@ -1,0 +1,89 @@
+{
+  "info": {
+    "name": "INNOVA Product Recommendation API",
+    "description": "Integration tests for mission-critical APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"demo-user\",\n  \"password\": \"secret\",\n  \"firstName\": \"Demo\",\n  \"lastName\": \"User\"\n}"
+            },
+            "url": "{{baseUrl}}/register"
+          }
+        },
+        {
+          "name": "Login User",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"demo-user\",\n  \"password\": \"secret\"\n}"
+            },
+            "url": "{{baseUrl}}/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Search Catalog And Market Products",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/search?user_id=demo-user&lat=37.7749&lon=-122.4194&keyword=crm"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Recommendation",
+      "item": [
+        {
+          "name": "Get Personalized Recommendations",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/recommendation?user_id=demo-user&lat=37.7749&lon=-122.4194"
+          }
+        }
+      ]
+    },
+    {
+      "name": "History",
+      "item": [
+        {
+          "name": "Favorite Product",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"demo-user\",\n  \"favorite\": {\n    \"id\": \"innova-crm\",\n    \"title\": \"INNOVA CRM Platform\",\n    \"seller\": \"INNOVA AI\",\n    \"price\": \"$99/month\",\n    \"source_type\": \"innova_catalog\",\n    \"url\": \"https://innova.ai/products/crm\",\n    \"keywords\": [\"crm\", \"sales\"]\n  }\n}"
+            },
+            "url": "{{baseUrl}}/history"
+          }
+        },
+        {
+          "name": "Get Favorites",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/history?user_id=demo-user"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8080"}
+  ]
+}
