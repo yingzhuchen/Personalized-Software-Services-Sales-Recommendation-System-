@@ -19,24 +19,20 @@ public class Recommendation {
 
         // Step 2, get all keywords, sort by count
         // {"software engineer": 6, "backend": 4, "san francisco": 3, "remote": 1}
-        Map<String, Integer> allKeywords = new HashMap<>();
+        Map<String, Set<String>> itemKeywords = new HashMap<>();
         for (String itemId : favoritedItemIds) {
-            Set<String> keywords = connection.getKeywords(itemId);
-            //use for loop to get all keywords
-            for (String keyword : keywords) {
-                allKeywords.put(keyword, allKeywords.getOrDefault(keyword, 0) + 1);
-            }
+            itemKeywords.put(itemId, connection.getKeywords(itemId));
         }
         connection.close();
 
-        List<Map.Entry<String, Integer>> keywordList = new ArrayList<>(allKeywords.entrySet());
-        //we got the keywords list in descending order
-        keywordList.sort((Map.Entry<String, Integer> e1, Map.Entry<String, Integer> e2) ->
-                Integer.compare(e2.getValue(), e1.getValue()));
-
-        // Cut down search list only top 3
-        if (keywordList.size() > 3) {
-            keywordList = keywordList.subList(0, 3);
+        // Content-based: aggregate favorite keywords, then take Top-3 signals for external search.
+        // TFIDF is available for corpus-aware ranking when document frequencies are present.
+        KeywordAggregator aggregator = new KeywordAggregator();
+        Map<String, Integer> allKeywords = aggregator.aggregate(itemKeywords);
+        List<String> topKeywordNames = aggregator.topKeywords(allKeywords, KeywordAggregator.DEFAULT_TOP_K);
+        List<Map.Entry<String, Integer>> keywordList = new ArrayList<>();
+        for (String keyword : topKeywordNames) {
+            keywordList.add(new AbstractMap.SimpleEntry<>(keyword, allKeywords.get(keyword)));
         }
 
         // Step 3, search based on keywords, filter out favorite items
