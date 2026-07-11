@@ -62,7 +62,7 @@ graph LR
 | **Backend** | Java (JDK 8+), Servlets, Apache Tomcat, RESTful APIs |
 | **Cloud Infrastructure** | AWS (EKS, EC2, S3, IAM), Amazon RDS (MySQL) |
 | **DevOps** | Docker, Kubernetes, Jenkins (CI/CD), Maven |
-| **Caching & Performance** | Redis (Cache-aside, TTL tuning), Connection Pooling |
+| **Caching & Performance** | Redis (Cache-aside, LRU, timeout + circuit breaker), Connection Pooling |
 | **Algorithms** | Content-Based Recommendation, TF-IDF, NLP (Keyword Extraction) |
 | **Frontend** | HTML5, CSS3, JavaScript, AJAX |
 
@@ -76,6 +76,8 @@ To solve the "cold start" problem inherent in collaborative filtering, this syst
 
 ### 2. High-Performance Caching
 * **Strategy:** Implemented a **Redis Cache-Aside** pattern to handle frequent read requests.
+* **Resilience:** Redis client timeout (`200ms`), fail-open on errors (fallback to MySQL), and a simple circuit breaker that skips Redis while OPEN.
+* **Observability:** `GET /cache/metrics` exposes hit/miss/error counters and hit rate; `GET /health/redis` returns 503 when the circuit is OPEN. Circuit trips also emit `ALERT redis_availability=DOWN` log lines for log-based paging.
 * **Optimization:** Added query deduplication logic to prevent redundant external API calls to Google Jobs.
 * **Result:** Reduced average API response latency by **~30%**.
 

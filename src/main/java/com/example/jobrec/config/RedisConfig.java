@@ -12,6 +12,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
  *
  * Application code does not set TTL; when memory is full, Redis evicts
  * least-recently-used keys automatically.
+ *
+ * Client resilience (see application.properties):
+ *   spring.redis.timeout / connect-timeout — command & connect timeouts
+ *   app.redis.circuit-breaker.* — fail-open circuit breaker thresholds
  */
 @Configuration
 public class RedisConfig {
