@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @Component
 public class SearchLatencyMetrics {
-    static final int SAMPLE_WINDOW = 256;
+    static final int SAMPLE_WINDOW = 4096;
 
     private final long[] hitSamplesNanos = new long[SAMPLE_WINDOW];
     private final long[] missSamplesNanos = new long[SAMPLE_WINDOW];
@@ -72,6 +72,14 @@ public class SearchLatencyMetrics {
         return percentileMs(copyFilledSamples(missSamplesNanos, missCount.get()), 0.50);
     }
 
+    public double getHitP95Ms() {
+        return percentileMs(copyFilledSamples(hitSamplesNanos, hitCount.get()), 0.95);
+    }
+
+    public double getMissP95Ms() {
+        return percentileMs(copyFilledSamples(missSamplesNanos, missCount.get()), 0.95);
+    }
+
     /**
      * @return latency reduction ratio in {@code [0, 1]}, or {@code 0} when either side lacks samples
      *         or miss p50 is zero. Example: {@code 0.80} means 80% faster on cache hit.
@@ -100,8 +108,11 @@ public class SearchLatencyMetrics {
         snapshot.put("missMeanMs", round3(getMissMeanMs()));
         snapshot.put("hitP50Ms", round3(getHitP50Ms()));
         snapshot.put("missP50Ms", round3(getMissP50Ms()));
+        snapshot.put("hitP95Ms", round3(getHitP95Ms()));
+        snapshot.put("missP95Ms", round3(getMissP95Ms()));
         snapshot.put("latencyReductionRatio", round3(getLatencyReductionRatio()));
         snapshot.put("latencyReductionPercent", round3(getLatencyReductionRatio() * 100.0));
+        snapshot.put("sampleWindow", SAMPLE_WINDOW);
         snapshot.put("baseline", "miss_path=MySQL_catalog+SerpAPI+EdenAI; hit_path=Redis_get+JSON_parse");
         snapshot.put("scope", "RecommendationService.searchProducts");
         return snapshot;

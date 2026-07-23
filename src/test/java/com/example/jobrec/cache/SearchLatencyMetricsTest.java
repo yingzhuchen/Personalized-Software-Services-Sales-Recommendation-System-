@@ -53,6 +53,18 @@ class SearchLatencyMetricsTest {
     }
 
     @Test
+    void snapshotIncludesP95() {
+        for (int i = 1; i <= 20; i++) {
+            metrics.recordHit(TimeUnit.MILLISECONDS.toNanos(i));
+            metrics.recordMiss(TimeUnit.MILLISECONDS.toNanos(i * 10L));
+        }
+        Map<String, Object> snapshot = metrics.snapshot();
+        assertTrue(((Number) snapshot.get("hitP95Ms")).doubleValue() >= ((Number) snapshot.get("hitP50Ms")).doubleValue());
+        assertTrue(((Number) snapshot.get("missP95Ms")).doubleValue() >= ((Number) snapshot.get("missP50Ms")).doubleValue());
+        assertEquals(4096, snapshot.get("sampleWindow"));
+    }
+
+    @Test
     void ignoresNegativeDurations() {
         metrics.recordHit(-1L);
         metrics.recordMiss(-5L);

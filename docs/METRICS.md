@@ -18,16 +18,31 @@ This document records **how** the latency and CI-validation claims are measured 
 ### Real MySQL + Redis protocol
 
 1. Create DB/user once: `jobrec_it` / `jobrec` / `jobrec` on `127.0.0.1:3306`; Redis on `127.0.0.1:6379`.
-2. Test seeds **122 catalog products** into MySQL and clears `search:*` Redis keys.
+2. Test seeds catalog products into MySQL (default **500** extras) and clears `search:*` Redis keys.
 3. Cold miss writes search JSON into Redis; subsequent hits read Redis only.
 4. Fresh miss samples delete the Redis key each iteration so MySQL runs again.
 5. Assert reduction ≥ 0.80.
+6. Reports written to `target/search-latency-standard.json` and `target/search-latency-large.json`.
 
 ```bash
-# optional overrides
-export APP_MYSQL_URL='jdbc:mysql://127.0.0.1:3306/jobrec_it?user=jobrec&password=jobrec&autoReconnect=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false'
-mvn -Dtest=SearchLatencyRedisMySqlIntegrationTest test
+# standard (~50 samples/path)
+mvn -Dtest=SearchLatencyRedisMySqlIntegrationTest#realRedisHitIsAtLeast80PercentFasterThanMysqlPlusMarketMiss test
+
+# large load (default 500 samples/path, ~500 catalog extras)
+mvn -Dtest=SearchLatencyRedisMySqlIntegrationTest#realStoreLargeLoadBenchmark test
+# or:
+./scripts/run-search-latency-load.sh
+
+# even larger
+SEARCH_LATENCY_LARGE_SAMPLES=1000 SEARCH_LATENCY_EXTRA_PRODUCTS=3000 ./scripts/run-search-latency-load.sh
+# equivalent:
+mvn -Dtest=SearchLatencyRedisMySqlIntegrationTest#realStoreLargeLoadBenchmark \
+  -Dsearch.latency.largeSamples=1000 -Dsearch.latency.extraProducts=3000 test
+
+cat target/search-latency-large.json
 ```
+
+Tunable system properties: `search.latency.samples`, `search.latency.largeSamples`, `search.latency.extraProducts`, `search.latency.warmup`.
 
 If MySQL/Redis are down, the IT is skipped via `@EnabledIf`.
 

@@ -106,7 +106,8 @@ To solve the "cold start" problem inherent in collaborative filtering, this syst
 ```bash
 ./scripts/measure-validation-gate.sh   # writes target/ci-validation-gate.json
 mvn -Dtest=SearchLatencyBenchmarkTest test
-mvn -Dtest=SearchLatencyRedisMySqlIntegrationTest test   # requires local MySQL + Redis
+mvn -Dtest=SearchLatencyRedisMySqlIntegrationTest#realStoreLargeLoadBenchmark test
+./scripts/run-search-latency-load.sh   # large load → target/search-latency-large.json
 ```
 
 
