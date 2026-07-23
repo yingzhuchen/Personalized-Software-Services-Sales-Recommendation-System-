@@ -70,7 +70,7 @@ class SearchLatencyBenchmarkTest {
     void setUp() {
         searchLatencyMetrics = new SearchLatencyMetrics();
         recommendationService = new RecommendationService(
-                profileService, productSearchService, searchLatencyMetrics);
+                profileService, productSearchService, searchLatencyMetrics, null);
     }
 
     @Test

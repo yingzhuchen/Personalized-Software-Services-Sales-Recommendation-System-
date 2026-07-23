@@ -7,20 +7,30 @@ This document records **how** the latency and CI-validation claims are measured 
 | Item | Value |
 |------|--------|
 | **Scope** | `RecommendationService.searchProducts` only (not full HTTP `/search`) |
-| **Hit path** | Redis get + JSON parse |
-| **Miss baseline** | MySQL catalog + SerpAPI / EdenAI (uncached product search) |
+| **Hit path** | Real Redis `GET` + JSON parse |
+| **Miss baseline** | Real MySQL catalog `LIKE` search + market stand-in (~80ms SerpAPI RTT; no API key in CI) |
 | **Formula** | `1 - p50(hitMs) / p50(missMs)` |
-| **Regression test** | `SearchLatencyBenchmarkTest` |
-| **Live metrics** | `GET /cache/metrics` → `searchLatency` (`hitP50Ms`, `missP50Ms`, `latencyReductionPercent`) |
-| **Latest CI run** | hit p50 ≈ **4.35ms**, miss p50 ≈ **81.70ms**, reduction ≈ **94.7%** |
+| **Unit / mock regression** | `SearchLatencyBenchmarkTest` (deterministic delays) |
+| **Real-store integration** | `SearchLatencyRedisMySqlIntegrationTest` (local MySQL `jobrec_it` + Redis) |
+| **Live metrics** | `GET /cache/metrics` → `searchLatency` |
+| **Latest real-store run** | hit p50 ≈ **0.73ms**, miss p50 ≈ **85.47ms**, reduction ≈ **99.1%** |
 
-Benchmark protocol (deterministic in CI):
+### Real MySQL + Redis protocol
 
-1. Inject ~4ms delay on Redis hit collaborator; ~80ms delay on miss/search collaborator (stands in for catalog + external APIs).
-2. Warm up 3 iterations, reset counters, then collect 25 hit + 25 miss samples.
-3. Assert reduction ≥ 0.80.
+1. Create DB/user once: `jobrec_it` / `jobrec` / `jobrec` on `127.0.0.1:3306`; Redis on `127.0.0.1:6379`.
+2. Test seeds **122 catalog products** into MySQL and clears `search:*` Redis keys.
+3. Cold miss writes search JSON into Redis; subsequent hits read Redis only.
+4. Fresh miss samples delete the Redis key each iteration so MySQL runs again.
+5. Assert reduction ≥ 0.80.
 
-Production traffic is also timed in-process via `SearchLatencyMetrics` on every `searchProducts` call.
+```bash
+# optional overrides
+export APP_MYSQL_URL='jdbc:mysql://127.0.0.1:3306/jobrec_it?user=jobrec&password=jobrec&autoReconnect=true&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false'
+mvn -Dtest=SearchLatencyRedisMySqlIntegrationTest test
+```
+
+If MySQL/Redis are down, the IT is skipped via `@EnabledIf`.
+
 
 ## 2. Pre-deploy validation efficiency (≥30%)
 

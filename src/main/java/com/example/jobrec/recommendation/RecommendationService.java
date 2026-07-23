@@ -19,14 +19,16 @@ public class RecommendationService {
     private final RecommendationProfileService profileService;
     private final ProductSearchService productSearchService;
     private final SearchLatencyMetrics searchLatencyMetrics;
-    private final SerpAPIClient serpAPIClient = new SerpAPIClient();
+    private final SerpAPIClient serpAPIClient;
 
     public RecommendationService(RecommendationProfileService profileService,
                                  ProductSearchService productSearchService,
-                                 SearchLatencyMetrics searchLatencyMetrics) {
+                                 SearchLatencyMetrics searchLatencyMetrics,
+                                 SerpAPIClient serpAPIClient) {
         this.profileService = profileService;
         this.productSearchService = productSearchService;
         this.searchLatencyMetrics = searchLatencyMetrics;
+        this.serpAPIClient = serpAPIClient;
     }
 
     /**

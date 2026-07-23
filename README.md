@@ -88,7 +88,7 @@ To solve the "cold start" problem inherent in collaborative filtering, this syst
 
 ## 📊 Project Impact
 
-* **Search latency:** Redis cache-aside reduces `searchProducts` p50 latency by **≥80%** vs uncached miss (measured ~95% in CI benchmark; see [`docs/METRICS.md`](docs/METRICS.md)).
+* **Search latency:** Redis cache-aside reduces `searchProducts` p50 latency by **≥80%** vs uncached miss. Real-store IT (MySQL + Redis): ~**99%** (hit ≈0.73ms, miss ≈85ms). See [`docs/METRICS.md`](docs/METRICS.md).
 * **Validation gate:** Automated `mvn test` gate (~28s) vs ~5 min manual Postman smoke → **≥30%** (measured ~90%) faster pre-deploy validation.
 * **Reliability:** Fail-open Redis circuit breaker + cache metrics endpoints for monitoring.
 
@@ -98,7 +98,7 @@ To solve the "cold start" problem inherent in collaborative filtering, this syst
 * Java 8+
 * Maven 3.6+
 * Docker & Kubernetes CLI (kubectl)
-* MySQL 5.7+
+* MySQL 5.7+ (local IT uses `jobrec_it` / user `jobrec`)
 * Redis
 
 ### Measure metrics locally
@@ -106,6 +106,7 @@ To solve the "cold start" problem inherent in collaborative filtering, this syst
 ```bash
 ./scripts/measure-validation-gate.sh   # writes target/ci-validation-gate.json
 mvn -Dtest=SearchLatencyBenchmarkTest test
+mvn -Dtest=SearchLatencyRedisMySqlIntegrationTest test   # requires local MySQL + Redis
 ```
 
 

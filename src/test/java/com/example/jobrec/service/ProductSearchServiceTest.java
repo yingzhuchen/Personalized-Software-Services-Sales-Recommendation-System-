@@ -4,7 +4,10 @@ import com.example.jobrec.db.MySQLConnection;
 import com.example.jobrec.entity.Item;
 import com.example.jobrec.external.SerpAPIClient;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
 import org.mockito.MockedConstruction;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -18,7 +21,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class ProductSearchServiceTest {
+    @Mock
+    private SerpAPIClient serpAPIClient;
 
     @Test
     void search_returnsCatalogProductsBeforeMarketSupplements() {
@@ -47,13 +53,13 @@ class ProductSearchServiceTest {
                 new HashSet<>(Collections.singletonList("crm")),
                 false);
 
-        try (MockedConstruction<MySQLConnection> mysql = mockConstruction(MySQLConnection.class,
-                (mock, context) -> when(mock.searchCatalogProducts("crm")).thenReturn(Collections.singletonList(catalogItem)));
-             MockedConstruction<SerpAPIClient> serp = mockConstruction(SerpAPIClient.class,
-                     (mock, context) -> when(mock.search(any(), any(), anyString()))
-                             .thenReturn(Collections.singletonList(marketItem)))) {
+        try (MockedConstruction<MySQLConnection> ignored = mockConstruction(MySQLConnection.class,
+                (mock, context) -> when(mock.searchCatalogProducts("crm"))
+                        .thenReturn(Collections.singletonList(catalogItem)))) {
+            when(serpAPIClient.search(any(), any(), anyString()))
+                    .thenReturn(Collections.singletonList(marketItem));
 
-            ProductSearchService service = new ProductSearchService();
+            ProductSearchService service = new ProductSearchService(serpAPIClient);
             List<Item> results = service.search(37.4, -122.1, "crm");
 
             assertEquals(2, results.size());
@@ -77,13 +83,13 @@ class ProductSearchServiceTest {
                 new HashSet<>(Collections.singletonList("crm")),
                 false);
 
-        try (MockedConstruction<MySQLConnection> mysql = mockConstruction(MySQLConnection.class,
+        try (MockedConstruction<MySQLConnection> ignored = mockConstruction(MySQLConnection.class,
                 (mock, context) -> {
                     when(mock.searchCatalogProducts("crm")).thenReturn(Collections.singletonList(crmItem));
                     when(mock.searchCatalogProducts("sales")).thenReturn(Collections.singletonList(crmItem));
                 })) {
 
-            ProductSearchService service = new ProductSearchService();
+            ProductSearchService service = new ProductSearchService(serpAPIClient);
             List<Item> results = service.searchCatalogByKeywords(Arrays.asList("crm", "sales"));
 
             assertEquals(1, results.size());
