@@ -1,5 +1,6 @@
 package com.example.jobrec.recommendation;
 
+import com.example.jobrec.cache.SearchLatencyMetrics;
 import com.example.jobrec.db.MySQLConnection;
 import com.example.jobrec.entity.Item;
 import com.example.jobrec.external.SerpAPIClient;
@@ -17,12 +18,15 @@ public class RecommendationService {
 
     private final RecommendationProfileService profileService;
     private final ProductSearchService productSearchService;
+    private final SearchLatencyMetrics searchLatencyMetrics;
     private final SerpAPIClient serpAPIClient = new SerpAPIClient();
 
     public RecommendationService(RecommendationProfileService profileService,
-                                 ProductSearchService productSearchService) {
+                                 ProductSearchService productSearchService,
+                                 SearchLatencyMetrics searchLatencyMetrics) {
         this.profileService = profileService;
         this.productSearchService = productSearchService;
+        this.searchLatencyMetrics = searchLatencyMetrics;
     }
 
     /**
@@ -66,15 +70,24 @@ public class RecommendationService {
         return recommendedItems;
     }
 
+    /**
+     * Product search with Redis cache-aside. Records hit/miss wall time so
+     * {@link SearchLatencyMetrics} can report p50 reduction vs the uncached baseline
+     * (MySQL catalog + SerpAPI / EdenAI).
+     */
     public List<Item> searchProducts(double lat, double lon, String keyword) {
+        long startedAt = System.nanoTime();
         String cacheKey = keyword == null ? "" : keyword;
         String cachedResult = profileService.getCachedSearchResult(lat, lon, cacheKey);
         if (cachedResult != null) {
-            return profileService.parseItems(cachedResult);
+            List<Item> cachedItems = profileService.parseItems(cachedResult);
+            searchLatencyMetrics.recordHit(System.nanoTime() - startedAt);
+            return cachedItems;
         }
 
         List<Item> items = productSearchService.search(lat, lon, keyword);
         profileService.cacheSearchResult(lat, lon, cacheKey, items);
+        searchLatencyMetrics.recordMiss(System.nanoTime() - startedAt);
         return items;
     }
 }

@@ -1,5 +1,6 @@
 package com.example.jobrec.recommendation;
 
+import com.example.jobrec.cache.SearchLatencyMetrics;
 import com.example.jobrec.db.MySQLConnection;
 import com.example.jobrec.entity.Item;
 import com.example.jobrec.external.SerpAPIClient;
@@ -30,6 +31,9 @@ class RecommendationServiceTest {
 
     @Mock
     private ProductSearchService productSearchService;
+
+    @Mock
+    private SearchLatencyMetrics searchLatencyMetrics;
 
     @InjectMocks
     private RecommendationService recommendationService;
