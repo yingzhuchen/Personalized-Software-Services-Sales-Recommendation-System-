@@ -8,6 +8,7 @@ import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -19,6 +20,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+@Component
 public class SerpAPIClient {
     private static final String URL_TEMPLATE =
             "https://serpapi.com/search?engine=google_shopping&q=%s&location=%s&api_key=%s";

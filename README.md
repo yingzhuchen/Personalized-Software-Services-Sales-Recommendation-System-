@@ -77,20 +77,20 @@ To solve the "cold start" problem inherent in collaborative filtering, this syst
 ### 2. High-Performance Caching
 * **Strategy:** Implemented a **Redis Cache-Aside** pattern to handle frequent read requests.
 * **Resilience:** Redis client timeout (`200ms`), fail-open on errors (fallback to MySQL), and a simple circuit breaker that skips Redis while OPEN.
-* **Observability:** `GET /cache/metrics` exposes hit/miss/error counters and hit rate; `GET /health/redis` returns 503 when the circuit is OPEN. Circuit trips also emit `ALERT redis_availability=DOWN` log lines for log-based paging.
+* **Observability:** `GET /cache/metrics` exposes hit/miss/error counters, hit rate, and **search latency** (`searchLatency.hitP50Ms` / `missP50Ms` / `latencyReductionPercent`); `GET /health/redis` returns 503 when the circuit is OPEN. Circuit trips also emit `ALERT redis_availability=DOWN` log lines for log-based paging.
 * **Optimization:** Added query deduplication logic to prevent redundant external API calls to Google Jobs.
-* **Result:** Reduced average API response latency by **~30%**.
+* **Result:** Redis cache hits cut `searchProducts` p50 latency by **≥80%** vs the uncached miss baseline (MySQL catalog + SerpAPI/EdenAI). Enforced by `SearchLatencyBenchmarkTest`; see [`docs/METRICS.md`](docs/METRICS.md).
 
 ### 3. Cloud-Native Reliability
 * **Scalability:** Deployed on **AWS EKS** with Horizontal Pod Autoscaling (HPA) to handle traffic surges.
-* **CI/CD:** Automated build and deployment pipeline using **Jenkins** and **Docker**, enabling rolling updates with health checks to ensure zero downtime.
+* **CI/CD:** Automated build and validation gate using **Jenkins** / **GitLab CI** and **Docker**-ready Maven tests (`Jenkinsfile`, `.gitlab-ci.yml`, `scripts/measure-validation-gate.sh`), including the search-latency regression benchmark before deploy.
 * **Data Integrity:** Designed MySQL schemas with proper indexing on `user_id` and `interaction_timestamp` for fast retrieval of history.
 
 ## 📊 Project Impact
 
-* **Latency Reduction:** Database tuning and Redis caching cut response times by **30%**.
-* **User Engagement:** The personalized ranking algorithm and real-time analytics features increased job application submissions by **~20%**.
-* **Reliability:** Achieved high availability through Kubernetes orchestration and stateless servlet design.
+* **Search latency:** Redis cache-aside reduces `searchProducts` p50 latency by **≥80%** vs uncached miss. Real-store IT (MySQL + Redis): ~**99%** (hit ≈0.73ms, miss ≈85ms). See [`docs/METRICS.md`](docs/METRICS.md).
+* **Validation gate:** Automated `mvn test` gate (~28s) vs ~5 min manual Postman smoke → **≥30%** (measured ~90%) faster pre-deploy validation.
+* **Reliability:** Fail-open Redis circuit breaker + cache metrics endpoints for monitoring.
 
 ## 🔧 Getting Started
 
@@ -98,8 +98,17 @@ To solve the "cold start" problem inherent in collaborative filtering, this syst
 * Java 8+
 * Maven 3.6+
 * Docker & Kubernetes CLI (kubectl)
-* MySQL 5.7+
+* MySQL 5.7+ (local IT uses `jobrec_it` / user `jobrec`)
 * Redis
+
+### Measure metrics locally
+
+```bash
+./scripts/measure-validation-gate.sh   # writes target/ci-validation-gate.json
+mvn -Dtest=SearchLatencyBenchmarkTest test
+mvn -Dtest=SearchLatencyRedisMySqlIntegrationTest#realStoreLargeLoadBenchmark test
+./scripts/run-search-latency-load.sh   # large load → target/search-latency-large.json
+```
 
 
 ## 📝 License

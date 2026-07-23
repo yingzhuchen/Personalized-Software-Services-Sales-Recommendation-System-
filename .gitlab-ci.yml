@@ -1,0 +1,16 @@
+# Automated validation gate before merge/deploy.
+# Measures wall-clock time of the test suite for docs/METRICS.md.
+
+stages:
+  test:
+    image: maven:3.9-eclipse-temurin-11
+    script:
+      - chmod +x scripts/measure-validation-gate.sh
+      - ./scripts/measure-validation-gate.sh
+    artifacts:
+      when: always
+      paths:
+        - target/ci-validation-gate.json
+        - target/surefire-reports/
+        - target/site/jacoco/
+      expire_in: 14 days

@@ -1,5 +1,6 @@
 package com.example.jobrec.recommendation;
 
+import com.example.jobrec.cache.SearchLatencyMetrics;
 import com.example.jobrec.db.MySQLConnection;
 import com.example.jobrec.entity.Item;
 import com.example.jobrec.external.SerpAPIClient;
@@ -30,6 +31,12 @@ class RecommendationServiceTest {
 
     @Mock
     private ProductSearchService productSearchService;
+
+    @Mock
+    private SearchLatencyMetrics searchLatencyMetrics;
+
+    @Mock
+    private SerpAPIClient serpAPIClient;
 
     @InjectMocks
     private RecommendationService recommendationService;
@@ -62,16 +69,14 @@ class RecommendationServiceTest {
                 new HashSet<>(Collections.singletonList("analytics")),
                 false);
 
-        try (MockedConstruction<MySQLConnection> mysql = mockConstruction(MySQLConnection.class,
+        try (MockedConstruction<MySQLConnection> ignored = mockConstruction(MySQLConnection.class,
                 (mock, context) -> when(mock.getFavoriteItemIds("user-1"))
-                        .thenReturn(new HashSet<>(Collections.singletonList("innova-crm"))));
-             MockedConstruction<SerpAPIClient> serp = mockConstruction(SerpAPIClient.class,
-                     (mock, context) -> when(mock.search(any(), any(), anyString()))
-                             .thenReturn(Collections.emptyList()))) {
+                        .thenReturn(new HashSet<>(Collections.singletonList("innova-crm"))))) {
 
             when(profileService.getTopKeywords("user-1")).thenReturn(Arrays.asList("analytics", "crm"));
             when(productSearchService.searchCatalogByKeywords(Arrays.asList("analytics", "crm")))
                     .thenReturn(Collections.singletonList(catalogItem));
+            when(serpAPIClient.search(any(), any(), anyString())).thenReturn(Collections.emptyList());
 
             List<Item> results = recommendationService.recommendItems("user-1", 37.4, -122.1);
 

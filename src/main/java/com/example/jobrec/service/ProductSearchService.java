@@ -18,7 +18,11 @@ import java.util.Set;
 public class ProductSearchService {
     private static final int MARKET_SUPPLEMENT_LIMIT = 5;
 
-    private final SerpAPIClient serpAPIClient = new SerpAPIClient();
+    private final SerpAPIClient serpAPIClient;
+
+    public ProductSearchService(SerpAPIClient serpAPIClient) {
+        this.serpAPIClient = serpAPIClient;
+    }
 
     public List<Item> search(double lat, double lon, String keyword) {
         List<Item> results = new ArrayList<>();

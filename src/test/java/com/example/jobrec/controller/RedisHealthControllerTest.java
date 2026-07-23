@@ -2,6 +2,7 @@ package com.example.jobrec.controller;
 
 import com.example.jobrec.cache.RedisCacheMetrics;
 import com.example.jobrec.cache.RedisCircuitBreaker;
+import com.example.jobrec.cache.SearchLatencyMetrics;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -26,6 +27,9 @@ class RedisHealthControllerTest {
 
     @MockBean
     private RedisCacheMetrics metrics;
+
+    @MockBean
+    private SearchLatencyMetrics searchLatencyMetrics;
 
     @Test
     void redisHealth_returnsOkWhenCircuitClosed() throws Exception {
@@ -65,11 +69,21 @@ class RedisHealthControllerTest {
         snapshot.put("redisAvailable", true);
         when(metrics.snapshot()).thenReturn(snapshot);
 
+        Map<String, Object> latency = new LinkedHashMap<>();
+        latency.put("hitCount", 8L);
+        latency.put("missCount", 2L);
+        latency.put("latencyReductionPercent", 85.0);
+        latency.put("scope", "RecommendationService.searchProducts");
+        when(searchLatencyMetrics.snapshot()).thenReturn(latency);
+
         mockMvc.perform(get("/cache/metrics"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.hits").value(10))
                 .andExpect(jsonPath("$.misses").value(2))
                 .andExpect(jsonPath("$.hitRate").value(10.0 / 12.0))
-                .andExpect(jsonPath("$.circuitState").value("CLOSED"));
+                .andExpect(jsonPath("$.circuitState").value("CLOSED"))
+                .andExpect(jsonPath("$.searchLatency.latencyReductionPercent").value(85.0))
+                .andExpect(jsonPath("$.searchLatency.scope")
+                        .value("RecommendationService.searchProducts"));
     }
 }

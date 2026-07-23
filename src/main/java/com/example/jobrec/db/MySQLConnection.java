@@ -19,7 +19,7 @@ public class MySQLConnection {
         //try, catch: try{} and if fails then do catch{}
         try {
             Class.forName("com.mysql.cj.jdbc.Driver").getDeclaredConstructor().newInstance();
-            conn = DriverManager.getConnection(MySQLDBUtil.URL);
+            conn = DriverManager.getConnection(MySQLDBUtil.getUrl());
 
         } catch (Exception e) {
             e.printStackTrace();

@@ -2,6 +2,7 @@ package com.example.jobrec.controller;
 
 import com.example.jobrec.cache.RedisCacheMetrics;
 import com.example.jobrec.cache.RedisCircuitBreaker;
+import com.example.jobrec.cache.SearchLatencyMetrics;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,17 +16,21 @@ import java.util.Map;
  *
  * <ul>
  *   <li>{@code GET /health/redis} — 200 when circuit is not OPEN, else 503</li>
- *   <li>{@code GET /cache/metrics} — hit/miss/error counters and circuit state</li>
+ *   <li>{@code GET /cache/metrics} — hit/miss/error counters, circuit state, search latency</li>
  * </ul>
  */
 @RestController
 public class RedisHealthController {
     private final RedisCircuitBreaker circuitBreaker;
     private final RedisCacheMetrics metrics;
+    private final SearchLatencyMetrics searchLatencyMetrics;
 
-    public RedisHealthController(RedisCircuitBreaker circuitBreaker, RedisCacheMetrics metrics) {
+    public RedisHealthController(RedisCircuitBreaker circuitBreaker,
+                                 RedisCacheMetrics metrics,
+                                 SearchLatencyMetrics searchLatencyMetrics) {
         this.circuitBreaker = circuitBreaker;
         this.metrics = metrics;
+        this.searchLatencyMetrics = searchLatencyMetrics;
     }
 
     @GetMapping("/health/redis")
@@ -47,6 +52,8 @@ public class RedisHealthController {
 
     @GetMapping("/cache/metrics")
     public Map<String, Object> cacheMetrics() {
-        return metrics.snapshot();
+        Map<String, Object> snapshot = new LinkedHashMap<>(metrics.snapshot());
+        snapshot.put("searchLatency", searchLatencyMetrics.snapshot());
+        return snapshot;
     }
 }
