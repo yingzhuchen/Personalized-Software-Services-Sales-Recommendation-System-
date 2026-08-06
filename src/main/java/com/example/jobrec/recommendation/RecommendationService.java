@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,10 +33,6 @@ public class RecommendationService {
         this.metrics = metrics;
     }
 
-    /**
-     * Recommendations prioritize INNOVA catalog products ranked by TF-IDF-weighted keyword overlap.
-     * SerpAPI market data supplements thin coverage after a minimum keyword-overlap filter.
-     */
     public List<Item> recommendItems(String userId, double lat, double lon) {
         MySQLConnection connection = new MySQLConnection();
         Set<String> favoritedItemIds = connection.getFavoriteItemIds(userId);
@@ -48,64 +43,17 @@ public class RecommendationService {
             return recommendColdStart(favoritedItemIds);
         }
 
-        List<String> topKeywords = new ArrayList<>(keywordWeights.keySet());
-        Set<String> visitedItemIds = new HashSet<>();
-        List<Item> catalogCandidates = new ArrayList<>();
+        RecommendationBuild build = buildPersonalizedRecommendations(
+                keywordWeights, favoritedItemIds, lat, lon, properties.getMaxResults());
 
-        List<Item> catalogMatches = productSearchService.searchCatalogByKeywords(topKeywords);
-        for (Item item : catalogMatches) {
-            if (!favoritedItemIds.contains(item.getId()) && visitedItemIds.add(item.getId())) {
-                catalogCandidates.add(item);
-            }
+        if (shouldUseLowConfidenceFallback(build)) {
+            List<Item> fallback = recommendPopularFallback(favoritedItemIds, properties.getColdStartFallbackSize());
+            recordMetrics(fallback, build, false, true);
+            return fallback;
         }
 
-        List<Item> rankedCatalog = itemRanker.rankByScore(catalogCandidates, keywordWeights);
-        List<Item> recommendedItems = new ArrayList<>(rankedCatalog);
-
-        int marketAdded = 0;
-        int marketFiltered = 0;
-        List<Item> marketCandidates = new ArrayList<>();
-        for (String keyword : topKeywords) {
-            List<Item> marketItems = serpAPIClient.search(lat, lon, keyword);
-            int addedForKeyword = 0;
-            for (Item item : marketItems) {
-                if (addedForKeyword >= properties.getMarketSupplementPerKeyword()) {
-                    break;
-                }
-                item.setSourceType(Item.SOURCE_MARKET);
-                if (favoritedItemIds.contains(item.getId()) || !visitedItemIds.add(item.getId())) {
-                    continue;
-                }
-                if (itemRanker.countKeywordOverlap(item, keywordWeights.keySet())
-                        < properties.getMarketMinKeywordOverlap()) {
-                    marketFiltered++;
-                    visitedItemIds.remove(item.getId());
-                    continue;
-                }
-                marketCandidates.add(item);
-                addedForKeyword++;
-            }
-        }
-
-        List<Item> rankedMarket = itemRanker.rankByScore(marketCandidates, keywordWeights);
-        for (Item item : rankedMarket) {
-            if (recommendedItems.size() >= properties.getMaxResults()) {
-                break;
-            }
-            recommendedItems.add(item);
-            marketAdded++;
-        }
-
-        if (recommendedItems.size() > properties.getMaxResults()) {
-            recommendedItems = new ArrayList<>(recommendedItems.subList(0, properties.getMaxResults()));
-        }
-
-        int catalogCount = (int) recommendedItems.stream()
-                .filter(item -> Item.SOURCE_INNOVA_CATALOG.equals(item.getSourceType()))
-                .count();
-        metrics.recordRecommendation(catalogCount, marketAdded, false);
-        metrics.recordMarketFiltered(marketFiltered);
-        return recommendedItems;
+        recordMetrics(build.items, build, false, false);
+        return build.items;
     }
 
     public List<Item> searchProducts(double lat, double lon, String keyword) {
@@ -135,68 +83,171 @@ public class RecommendationService {
             return new ArrayList<>();
         }
 
+        RecommendationBuild build = buildPersonalizedRecommendations(
+                keywordWeights, excludedItemIds, lat, lon, properties.getMaxResults());
+        return build.items;
+    }
+
+    private RecommendationBuild buildPersonalizedRecommendations(Map<String, Double> keywordWeights,
+                                                                 Set<String> excludedItemIds,
+                                                                 double lat,
+                                                                 double lon,
+                                                                 int maxResults) {
         List<String> topKeywords = new ArrayList<>(keywordWeights.keySet());
         Set<String> visitedItemIds = new HashSet<>();
+        int lowScoreFiltered = 0;
+
         List<Item> catalogCandidates = new ArrayList<>();
-        List<Item> catalogMatches = productSearchService.searchCatalogByKeywords(topKeywords);
-        for (Item item : catalogMatches) {
-            if (!excludedItemIds.contains(item.getId()) && visitedItemIds.add(item.getId())) {
+        for (Item item : productSearchService.searchCatalogByKeywords(topKeywords)) {
+            if (excludedItemIds.contains(item.getId()) || !visitedItemIds.add(item.getId())) {
+                continue;
+            }
+            if (itemRanker.scoreItem(item, keywordWeights) >= properties.getMinItemScore()) {
                 catalogCandidates.add(item);
+            } else {
+                lowScoreFiltered++;
+                visitedItemIds.remove(item.getId());
             }
         }
 
-        List<Item> recommendedItems = new ArrayList<>(
-                itemRanker.rankByScore(catalogCandidates, keywordWeights));
-
-        for (String keyword : topKeywords) {
-            if (recommendedItems.size() >= properties.getMaxResults()) {
+        List<Item> rankedCatalog = itemRanker.rankByScore(catalogCandidates, keywordWeights);
+        List<Item> recommendedItems = new ArrayList<>();
+        for (Item item : rankedCatalog) {
+            if (recommendedItems.size() >= maxResults) {
                 break;
             }
-            List<Item> marketItems = serpAPIClient.search(lat, lon, keyword);
-            int addedForKeyword = 0;
-            for (Item item : marketItems) {
-                if (addedForKeyword >= properties.getMarketSupplementPerKeyword()
-                        || recommendedItems.size() >= properties.getMaxResults()) {
+            recommendedItems.add(item);
+        }
+
+        int marketAdded = 0;
+        int marketFiltered = 0;
+        if (shouldSkipMarketSupplement(rankedCatalog.size())) {
+            metrics.recordMarketSkippedForCatalogPriority();
+        } else {
+            int marketSlots = Math.min(properties.getMaxMarketResults(), maxResults - recommendedItems.size());
+            List<Item> marketCandidates = new ArrayList<>();
+            for (String keyword : topKeywords) {
+                List<Item> marketItems = serpAPIClient.search(lat, lon, keyword);
+                int addedForKeyword = 0;
+                for (Item item : marketItems) {
+                    if (addedForKeyword >= properties.getMarketSupplementPerKeyword()) {
+                        break;
+                    }
+                    item.setSourceType(Item.SOURCE_MARKET);
+                    if (excludedItemIds.contains(item.getId()) || !visitedItemIds.add(item.getId())) {
+                        continue;
+                    }
+                    if (itemRanker.countKeywordOverlap(item, keywordWeights.keySet())
+                            < properties.getMarketMinKeywordOverlap()) {
+                        marketFiltered++;
+                        visitedItemIds.remove(item.getId());
+                        continue;
+                    }
+                    marketCandidates.add(item);
+                    addedForKeyword++;
+                }
+            }
+
+            List<Item> rankedMarket = itemRanker.rankByScore(marketCandidates, keywordWeights);
+            for (Item item : rankedMarket) {
+                if (marketAdded >= marketSlots || recommendedItems.size() >= maxResults) {
                     break;
                 }
-                item.setSourceType(Item.SOURCE_MARKET);
-                if (excludedItemIds.contains(item.getId()) || !visitedItemIds.add(item.getId())) {
-                    continue;
-                }
-                if (itemRanker.countKeywordOverlap(item, keywordWeights.keySet())
-                        < properties.getMarketMinKeywordOverlap()) {
-                    visitedItemIds.remove(item.getId());
+                if (itemRanker.scoreItem(item, keywordWeights) < properties.getMinItemScore()) {
+                    lowScoreFiltered++;
                     continue;
                 }
                 recommendedItems.add(item);
-                addedForKeyword++;
+                marketAdded++;
             }
         }
 
-        if (recommendedItems.size() > properties.getMaxResults()) {
-            return new ArrayList<>(recommendedItems.subList(0, properties.getMaxResults()));
+        return new RecommendationBuild(recommendedItems, rankedCatalog.size(), marketAdded,
+                marketFiltered, lowScoreFiltered, keywordWeights);
+    }
+
+    private boolean shouldSkipMarketSupplement(int qualifiedCatalogCount) {
+        return qualifiedCatalogCount >= properties.getSkipMarketWhenCatalogAtLeast();
+    }
+
+    private boolean shouldUseLowConfidenceFallback(RecommendationBuild build) {
+        if (!properties.isLowConfidenceFallbackEnabled()) {
+            return false;
         }
-        return recommendedItems;
+        if (build.items.size() < properties.getMinResultsBeforeFallback()) {
+            return true;
+        }
+        return build.averageScore() < properties.getMinItemScore();
     }
 
     private List<Item> recommendColdStart(Set<String> favoritedItemIds) {
         if (!properties.isColdStartFallbackEnabled()) {
-            metrics.recordRecommendation(0, 0, false);
+            metrics.recordRecommendation(0, 0, false, false, 0.0, 0);
             return new ArrayList<>();
         }
+        List<Item> results = recommendPopularFallback(favoritedItemIds, properties.getColdStartFallbackSize());
+        recordMetrics(results, null, true, false);
+        return results;
+    }
 
+    private List<Item> recommendPopularFallback(Set<String> excludedItemIds, int limit) {
         MySQLConnection connection = new MySQLConnection();
-        List<Item> popularItems = connection.getPopularCatalogItems(properties.getColdStartFallbackSize());
+        List<Item> popularItems = connection.getPopularCatalogItems(limit);
         connection.close();
 
         List<Item> results = new ArrayList<>();
         for (Item item : popularItems) {
-            if (!favoritedItemIds.contains(item.getId())) {
+            if (!excludedItemIds.contains(item.getId())) {
                 results.add(item);
             }
         }
-
-        metrics.recordRecommendation(results.size(), 0, true);
         return results;
+    }
+
+    private void recordMetrics(List<Item> items, RecommendationBuild build, boolean coldStart, boolean lowConfidence) {
+        int catalogCount = (int) items.stream()
+                .filter(item -> Item.SOURCE_INNOVA_CATALOG.equals(item.getSourceType()))
+                .count();
+        int marketCount = items.size() - catalogCount;
+        double avgScore = build == null ? 0.0 : build.averageScore();
+        int lowScoreFiltered = build == null ? 0 : build.lowScoreFiltered;
+        metrics.recordRecommendation(catalogCount, marketCount, coldStart, lowConfidence, avgScore, lowScoreFiltered);
+        if (build != null) {
+            metrics.recordMarketFiltered(build.marketFiltered);
+        }
+    }
+
+    private static final class RecommendationBuild {
+        private final List<Item> items;
+        private final int catalogCount;
+        private final int marketCount;
+        private final int marketFiltered;
+        private final int lowScoreFiltered;
+        private final Map<String, Double> keywordWeights;
+
+        private RecommendationBuild(List<Item> items,
+                                    int catalogCount,
+                                    int marketCount,
+                                    int marketFiltered,
+                                    int lowScoreFiltered,
+                                    Map<String, Double> keywordWeights) {
+            this.items = items;
+            this.catalogCount = catalogCount;
+            this.marketCount = marketCount;
+            this.marketFiltered = marketFiltered;
+            this.lowScoreFiltered = lowScoreFiltered;
+            this.keywordWeights = keywordWeights;
+        }
+
+        private double averageScore() {
+            if (items.isEmpty()) {
+                return 0.0;
+            }
+            ItemRanker ranker = new ItemRanker();
+            return items.stream()
+                    .mapToDouble(item -> ranker.scoreItem(item, keywordWeights))
+                    .average()
+                    .orElse(0.0);
+        }
     }
 }

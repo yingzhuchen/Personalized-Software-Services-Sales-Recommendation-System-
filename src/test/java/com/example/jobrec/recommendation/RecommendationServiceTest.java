@@ -49,6 +49,11 @@ class RecommendationServiceTest {
         lenient().when(properties.getMarketSupplementPerKeyword()).thenReturn(3);
         lenient().when(properties.getMaxResults()).thenReturn(50);
         lenient().when(properties.getMarketMinKeywordOverlap()).thenReturn(1);
+        lenient().when(properties.getMinItemScore()).thenReturn(0.0);
+        lenient().when(properties.getMinResultsBeforeFallback()).thenReturn(1);
+        lenient().when(properties.isLowConfidenceFallbackEnabled()).thenReturn(false);
+        lenient().when(properties.getMaxMarketResults()).thenReturn(5);
+        lenient().when(properties.getSkipMarketWhenCatalogAtLeast()).thenReturn(3);
     }
 
     @Test
@@ -63,7 +68,7 @@ class RecommendationServiceTest {
             List<Item> results = recommendationService.recommendItems("user-1", 37.4, -122.1);
 
             assertTrue(results.isEmpty());
-            verify(metrics).recordRecommendation(0, 0, false);
+            verify(metrics).recordRecommendation(0, 0, false, false, 0.0, 0);
         }
     }
 
@@ -97,7 +102,7 @@ class RecommendationServiceTest {
 
             assertEquals(1, results.size());
             assertEquals("innova-crm", results.get(0).getId());
-            verify(metrics).recordRecommendation(1, 0, true);
+            verify(metrics).recordRecommendation(1, 0, true, false, 0.0, 0);
         }
     }
 
@@ -137,7 +142,64 @@ class RecommendationServiceTest {
             assertEquals(1, results.size());
             assertEquals("innova-analytics", results.get(0).getId());
             assertEquals(Item.SOURCE_INNOVA_CATALOG, results.get(0).getSourceType());
-            verify(metrics).recordRecommendation(1, 0, false);
+            verify(metrics).recordRecommendation(1, 0, false, false, 0.9, 0);
+        }
+    }
+
+    @Test
+    void recommendItems_fallsBackWhenScoresAreTooLow() {
+        stubRecommendationDefaults();
+        when(properties.isLowConfidenceFallbackEnabled()).thenReturn(true);
+        when(properties.getMinItemScore()).thenReturn(0.5);
+        when(properties.getMinResultsBeforeFallback()).thenReturn(3);
+        when(properties.getColdStartFallbackSize()).thenReturn(2);
+
+        Item weakMatch = new Item(
+                "innova-analytics",
+                "INNOVA Analytics Suite",
+                "INNOVA AI",
+                "$199/month",
+                "INNOVA AI",
+                Item.SOURCE_INNOVA_CATALOG,
+                "Analytics",
+                null,
+                "https://innova.ai/products/analytics",
+                new HashSet<>(Collections.singletonList("analytics")),
+                false);
+        Item popular = new Item(
+                "innova-crm",
+                "INNOVA CRM Platform",
+                "INNOVA AI",
+                "$99/month",
+                "INNOVA AI",
+                Item.SOURCE_INNOVA_CATALOG,
+                "CRM",
+                null,
+                "https://innova.ai/products/crm",
+                new HashSet<>(Collections.singletonList("crm")),
+                false);
+
+        Map<String, Double> keywordWeights = new HashMap<>();
+        keywordWeights.put("analytics", 0.1);
+
+        try (MockedConstruction<MySQLConnection> mysql = mockConstruction(MySQLConnection.class,
+                (mock, context) -> {
+                    when(mock.getFavoriteItemIds("user-1")).thenReturn(Collections.emptySet());
+                    when(mock.getPopularCatalogItems(2)).thenReturn(Collections.singletonList(popular));
+                });
+             MockedConstruction<SerpAPIClient> serp = mockConstruction(SerpAPIClient.class,
+                     (mock, context) -> when(mock.search(any(), any(), anyString()))
+                             .thenReturn(Collections.emptyList()))) {
+
+            when(profileService.getKeywordWeights("user-1")).thenReturn(keywordWeights);
+            when(productSearchService.searchCatalogByKeywords(Collections.singletonList("analytics")))
+                    .thenReturn(Collections.singletonList(weakMatch));
+
+            List<Item> results = recommendationService.recommendItems("user-1", 37.4, -122.1);
+
+            assertEquals(1, results.size());
+            assertEquals("innova-crm", results.get(0).getId());
+            verify(metrics).recordRecommendation(1, 0, false, true, 0.0, 1);
         }
     }
 
