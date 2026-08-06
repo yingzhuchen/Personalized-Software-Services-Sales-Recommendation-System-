@@ -8,5 +8,6 @@ public class HistoryRequestBody {
 
     public Item favorite;
 
+    @JsonProperty("from_recommendation")
+    public boolean fromRecommendation;
 }
-

@@ -25,7 +25,7 @@ public class HistoryController {
     @PostMapping("/history")
     public ResultResponse addFavorite(@RequestBody HistoryRequestBody body, HttpSession session) {
         SessionUtils.requireSession(session);
-        historyService.addFavorite(body.userId, body.favorite);
+        historyService.addFavorite(body.userId, body.favorite, body.fromRecommendation);
         return new ResultResponse("SUCCESS");
     }
 

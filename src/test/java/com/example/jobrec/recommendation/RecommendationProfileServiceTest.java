@@ -1,5 +1,6 @@
 package com.example.jobrec.recommendation;
 
+import com.example.jobrec.config.RecommendationProperties;
 import com.example.jobrec.service.RedisCacheService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,13 +20,16 @@ class RecommendationProfileServiceTest {
     @Mock
     private RedisCacheService redisCacheService;
 
+    @Mock
+    private RecommendationProperties properties;
+
     @InjectMocks
     private RecommendationProfileService profileService;
 
     @Test
     void getTopKeywords_returnsCachedKeywordsWithoutDatabaseLookup() {
         when(redisCacheService.getRecommendationKeywords("user-1"))
-                .thenReturn("crm,analytics,ai");
+                .thenReturn("crm:0.8,analytics:0.6,ai:0.4");
 
         List<String> keywords = profileService.getTopKeywords("user-1");
 

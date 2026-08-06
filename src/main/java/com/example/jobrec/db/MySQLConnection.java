@@ -223,6 +223,63 @@ public class MySQLConnection {
         return products;
     }
 
+    public List<Item> getPopularCatalogItems(int limit) {
+        if (conn == null || limit <= 0) {
+            return Collections.emptyList();
+        }
+
+        List<Item> products = new ArrayList<>();
+        String sql = "SELECT i.item_id, i.name, i.address, i.url, i.seller, i.description, i.source_type, "
+                + "COUNT(h.item_id) AS favorite_count "
+                + "FROM items i "
+                + "LEFT JOIN history h ON i.item_id = h.item_id "
+                + "WHERE i.source_type = ? "
+                + "GROUP BY i.item_id, i.name, i.address, i.url, i.seller, i.description, i.source_type "
+                + "ORDER BY favorite_count DESC, i.name ASC "
+                + "LIMIT ?";
+        try {
+            PreparedStatement statement = conn.prepareStatement(sql);
+            statement.setString(1, Item.SOURCE_INNOVA_CATALOG);
+            statement.setInt(2, limit);
+            ResultSet rs = statement.executeQuery();
+            while (rs.next()) {
+                String itemId = rs.getString("item_id");
+                products.add(buildItemFromRow(rs, getKeywords(itemId), false));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        if (products.isEmpty()) {
+            List<Item> catalogItems = searchCatalogProducts(null);
+            return catalogItems.subList(0, Math.min(limit, catalogItems.size()));
+        }
+        return products;
+    }
+
+    public List<String> getUsersWithMinimumFavorites(int minimumFavorites, int limit) {
+        if (conn == null || minimumFavorites <= 0 || limit <= 0) {
+            return Collections.emptyList();
+        }
+
+        List<String> userIds = new ArrayList<>();
+        String sql = "SELECT user_id, COUNT(*) AS favorite_count "
+                + "FROM history GROUP BY user_id HAVING favorite_count >= ? "
+                + "ORDER BY favorite_count DESC LIMIT ?";
+        try {
+            PreparedStatement statement = conn.prepareStatement(sql);
+            statement.setInt(1, minimumFavorites);
+            statement.setInt(2, limit);
+            ResultSet rs = statement.executeQuery();
+            while (rs.next()) {
+                userIds.add(rs.getString("user_id"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return userIds;
+    }
+
     public Map<String, Integer> getDocumentFrequenciesForKeywords(List<String> keywords) {
         if (conn == null || keywords.isEmpty()) {
             return Collections.emptyMap();

@@ -1,5 +1,6 @@
 package com.example.jobrec.recommendation;
 
+import com.example.jobrec.config.RecommendationProperties;
 import com.example.jobrec.db.MySQLConnection;
 import com.example.jobrec.entity.Item;
 import com.example.jobrec.service.RedisCacheService;
@@ -8,52 +9,62 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 @Service
 public class RecommendationProfileService {
-    private static final int TOP_KEYWORD_COUNT = 3;
-
     private final TFIDF tfidf = new TFIDF();
     private final RedisCacheService redisCacheService;
+    private final RecommendationProperties properties;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public RecommendationProfileService(RedisCacheService redisCacheService) {
+    public RecommendationProfileService(RedisCacheService redisCacheService,
+                                        RecommendationProperties properties) {
         this.redisCacheService = redisCacheService;
+        this.properties = properties;
     }
 
     public List<String> getTopKeywords(String userId) {
+        return new ArrayList<>(getKeywordWeights(userId).keySet());
+    }
+
+    public Map<String, Double> getKeywordWeights(String userId) {
         String cached = redisCacheService.getRecommendationKeywords(userId);
         if (cached != null && !cached.isEmpty()) {
-            return parseKeywordList(cached);
+            return parseKeywordWeightMap(cached);
         }
 
+        Map<String, Double> keywordWeights = computeKeywordWeights(userId);
+        if (!keywordWeights.isEmpty()) {
+            redisCacheService.setRecommendationKeywords(userId, serializeKeywordWeights(keywordWeights));
+        }
+        return keywordWeights;
+    }
+
+    public Map<String, Double> computeKeywordWeightsFromFavorites(Set<String> favoritedItemIds) {
         MySQLConnection connection = new MySQLConnection();
-        Set<String> favoritedItemIds = connection.getFavoriteItemIds(userId);
         Map<String, Integer> termFrequencies = connection.getTermFrequenciesForItems(favoritedItemIds);
         connection.close();
 
         if (termFrequencies.isEmpty()) {
-            return new ArrayList<>();
+            return new LinkedHashMap<>();
         }
 
         int totalDocuments = getTotalDocuments();
         Map<String, Integer> documentFrequencies = getDocumentFrequencies(termFrequencies.keySet());
-
         Map<String, Double> tfidfScores = tfidf.computeScores(
                 termFrequencies, documentFrequencies, totalDocuments);
-        List<Map.Entry<String, Double>> topKeywords =
-                tfidf.getTopKeywords(tfidfScores, TOP_KEYWORD_COUNT);
 
-        List<String> keywords = new ArrayList<>();
-        for (Map.Entry<String, Double> entry : topKeywords) {
-            keywords.add(entry.getKey());
+        Map<String, Double> keywordWeights = new LinkedHashMap<>();
+        for (Map.Entry<String, Double> entry : tfidf.getTopKeywords(
+                tfidfScores, properties.getTopKeywordCount())) {
+            keywordWeights.put(entry.getKey(), entry.getValue());
         }
-
-        redisCacheService.setRecommendationKeywords(userId, String.join(",", keywords));
-        return keywords;
+        return keywordWeights;
     }
 
     public void invalidateCorpusCache() {
@@ -79,6 +90,13 @@ public class RecommendationProfileService {
             e.printStackTrace();
             return new ArrayList<>();
         }
+    }
+
+    private Map<String, Double> computeKeywordWeights(String userId) {
+        MySQLConnection connection = new MySQLConnection();
+        Set<String> favoritedItemIds = connection.getFavoriteItemIds(userId);
+        connection.close();
+        return computeKeywordWeightsFromFavorites(favoritedItemIds);
     }
 
     private int getTotalDocuments() {
@@ -114,13 +132,31 @@ public class RecommendationProfileService {
         return documentFrequencies;
     }
 
-    private List<String> parseKeywordList(String cached) {
-        List<String> keywords = new ArrayList<>();
-        for (String keyword : cached.split(",")) {
-            if (!keyword.isEmpty()) {
-                keywords.add(keyword);
+    private Map<String, Double> parseKeywordWeightMap(String cached) {
+        Map<String, Double> keywordWeights = new LinkedHashMap<>();
+        for (String token : cached.split(",")) {
+            if (token.isEmpty()) {
+                continue;
             }
+            int separator = token.indexOf(':');
+            if (separator <= 0 || separator == token.length() - 1) {
+                keywordWeights.put(token, 1.0);
+                continue;
+            }
+            keywordWeights.put(token.substring(0, separator), Double.parseDouble(token.substring(separator + 1)));
         }
-        return keywords;
+        return keywordWeights;
+    }
+
+    private List<String> parseKeywordList(String cached) {
+        return new ArrayList<>(parseKeywordWeightMap(cached).keySet());
+    }
+
+    private String serializeKeywordWeights(Map<String, Double> keywordWeights) {
+        List<String> tokens = new ArrayList<>();
+        for (Map.Entry<String, Double> entry : keywordWeights.entrySet()) {
+            tokens.add(entry.getKey() + ":" + entry.getValue());
+        }
+        return String.join(",", tokens);
     }
 }
