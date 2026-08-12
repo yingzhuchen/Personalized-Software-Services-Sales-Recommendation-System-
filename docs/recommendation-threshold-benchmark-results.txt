@@ -1,0 +1,132 @@
+
+=== Existing inconsistency ===
+GET /search          → market cap = 5 (ProductSearchService)
+GET /recommendation  → topK = 3, market cap = 3 per keyword
+
+=== Top-K keyword threshold (market cap = 3 per keyword) ===
+K    Keywords Score%       CatalogHits    MaxSerpCalls
+3    analytics,bi,crm 37.5       % 2              9           
+5    analytics,bi,crm,customer,dashboard 62.5       % 2              15          
+8    analytics,bi,crm,customer,dashboard,data,saas,sales 100.0      % 2              24          
+
+=== Market supplement per keyword (topK = 3) ===
+Cap    MaxMarketItems MaxSerpCalls
+3      9              9           
+5      15             15          
+8      24             24          
+
+=== High-volume return configs (catalog + market upper bound) ===
+Config(topK×cap)   AvgCatalog   MaxMarket    MaxTotal       AvgScore%   
+3×3                455.0        9            464            35.2        
+5×5                701.0        25           726            51.2        
+8×8                986.0        64           1050           67.9        
+10×10              1125.0       100          1225           75.7        
+10×20              1125.0       200          1325           75.7        
+15×20              1351.0       300          1651           90.1        
+20×30              1444.0       600          2044           97.4        
+
+=== Market cap sweep (topK = 3) ===
+Cap  AvgTotal     AvgCatalog   AvgMarket    MaxTotal/user SerpCalls/user
+3    458.5       455.0       3.5         458           9            
+5    459.1       455.0       4.1         459           15           
+8    459.4       455.0       4.4         459           24           
+10   459.5       455.0       4.5         459           30           
+15   459.5       455.0       4.5         459           45           
+20   459.5       455.0       4.5         459           60           
+30   459.5       455.0       4.5         459           90           
+50   459.5       455.0       4.5         459           150          
+
+=== Diminishing returns: catalog hit gain per extra SerpAPI call ===
+Config               AvgCatalog     SerpCalls/user   Catalog/SerpCall  
+3×3                  455.0          9                0.0000            
+5×5                  701.0          25               9.8400            
+10×10                1125.0         100              6.7000            
+10×20                1125.0         200              3.3500            
+20×30                1444.0         600              1.6483            
+
+=== Large-scale Top-K benchmark ===
+Catalog: 2000 products | Users: 500 | Avg favorites/user: 4.6
+
+Top-K sweep (market cap = 3 per keyword):
+K    AvgCatalog   P50Catalog   P95Catalog   AvgScore%    MarginalCatΔ MaxSerp/user
+3    455.0       454.0       484.0       35.2        0             9            
+5    701.0       709.0       747.0       51.2        246           15           
+8    986.0       1031.0      1076.0      67.9        285           24           
+10   1125.0      1210.0      1251.0      75.7        139           30           
+15   1351.0      1539.0      1589.0      90.1        226           45           
+20   1444.0      1602.0      1796.0      97.4        93            60           
+30   1467.0      1602.0      1903.0      100.0       23            90           
+
+=== Top-K comparison at 1000 catalog (marketCap=3 fixed) ===
+TopK  AvgInternal  Marginal  AvgExternal  SerpCalls  ScoreCov%
+3           219.9        +0          9.0          9      36.3
+5           339.1      +119         14.6         15      52.4
+8           476.0      +137         22.2         24      68.3
+11          572.1       +96         28.7         33      79.0
+15          660.0       +88         36.3         45      90.0
+20          711.1       +51         42.4         60      97.6
+
+=== Production-scale recommendation benchmark ===
+Internal catalog: 1000 | External market pool: 3000 | Users: 500
+SerpAPI returns up to 20 results per keyword query
+
+Config  AvgInternal  AvgExternal  AvgTotal  P95Total  SerpCalls  Int/Ext ratio
+  3×3          219.9          9.0     228.9       254          9   24.4:1
+  3×5          219.9         15.0     234.9       260         15   14.7:1
+  3×10         219.9         30.0     249.9       275         30    7.3:1
+  5×3          339.1         14.6     353.6       385         15   23.3:1
+  5×5          339.1         24.3     363.3       395         25   14.0:1
+  5×10         339.1         48.5     387.6       420         50    7.0:1
+  8×3          476.0         22.2     498.1       560         24   21.5:1
+  8×5          476.0         36.9     512.9       576         40   12.9:1
+  8×10         476.0         73.9     549.8       616         80    6.4:1
+ 10×10         542.7         88.6     631.3       720        100    6.1:1
+ 10×20         542.7        150.7     693.4       790        200    3.6:1
+ 15×10         660.0        120.8     780.8       942        150    5.5:1
+
+=== Why 3 vs returning dozens (1000 internal + 3000 external) ===
+3×3  (current)         internal=220  external=9  total=229  (ext 4% of total)
+5×5                    internal=339  external=24  total=363  (ext 7% of total)
+10×10 (~100 ext max)   internal=543  external=89  total=631  (ext 14% of total)
+10×20 (~200 ext max)   internal=543  external=151  total=693  (ext 22% of total)
+
+3→10×10: internal +323, external +80, serp calls 9→100 (+91)
+External share at 3×3: 3.9% | at 10×10: 14.0%
+
+=== Catalog size sensitivity (topK=3, marketCap=3) ===
+Catalog   AvgInternal  AvgExternal  AvgTotal  SerpCalls
+100              17.8          9.0      26.8          9
+500             106.6          9.0     115.6          9
+1000            219.9          9.0     228.9          9
+2000            449.8          9.0     458.8          9
+5000           1142.2          9.0    1151.2          9
+
+=== Stress test: scaling users + catalog + market ===
+
+[1000 internal | 3000 external | 500 users | build 2ms | sim 43ms]
+TopK  AvgInternal  Marginal(vs prev)  AvgExternal  SerpCalls  ScoreCov%
+3           219.9                +0          9.0          9      36.3
+5           339.1              +119         14.6         15      52.4
+8           476.0              +137         22.2         24      68.3
+11          572.1               +96         28.7         33      79.0
+
+[5000 internal | 15000 external | 2000 users | build 12ms | sim 943ms]
+TopK  AvgInternal  Marginal(vs prev)  AvgExternal  SerpCalls  ScoreCov%
+3          1142.0                +0          9.0          9      36.3
+5          1750.0              +608         14.6         15      52.7
+8          2441.6              +692         22.2         24      69.0
+11         2914.7              +473         28.6         33      80.1
+
+[10000 internal | 30000 external | 10000 users | build 31ms | sim 8890ms]
+TopK  AvgInternal  Marginal(vs prev)  AvgExternal  SerpCalls  ScoreCov%
+3          2304.4                +0          9.0          9      35.1
+5          3535.6             +1231         14.6         15      51.1
+8          4957.0             +1421         22.4         24      67.7
+11         5936.2              +979         29.1         33      79.0
+
+[20000 internal | 60000 external | 20000 users | build 57ms | sim 35163ms]
+TopK  AvgInternal  Marginal(vs prev)  AvgExternal  SerpCalls  ScoreCov%
+3          4625.9                +0          9.0          9      35.2
+5          7089.7             +2464         14.6         15      51.4
+8          9928.5             +2839         22.4         24      68.0
+11        11860.2             +1932         29.0         33      79.2
