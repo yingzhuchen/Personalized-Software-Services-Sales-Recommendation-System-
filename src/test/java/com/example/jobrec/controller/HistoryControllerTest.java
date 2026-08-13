@@ -92,6 +92,6 @@ class HistoryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"));
 
-        verify(historyService).addFavorite(eq("user-1"), eq(body.favorite));
+        verify(historyService).addFavorite(eq("user-1"), eq(body.favorite), eq(false));
     }
 }

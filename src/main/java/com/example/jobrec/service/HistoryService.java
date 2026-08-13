@@ -2,6 +2,7 @@ package com.example.jobrec.service;
 
 import com.example.jobrec.db.MySQLConnection;
 import com.example.jobrec.entity.Item;
+import com.example.jobrec.recommendation.RecommendationMetrics;
 import com.example.jobrec.recommendation.RecommendationProfileService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -14,21 +15,31 @@ import java.util.Set;
 public class HistoryService {
     private final RedisCacheService redisCacheService;
     private final RecommendationProfileService recommendationProfileService;
+    private final RecommendationMetrics recommendationMetrics;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public HistoryService(RedisCacheService redisCacheService,
-                          RecommendationProfileService recommendationProfileService) {
+                          RecommendationProfileService recommendationProfileService,
+                          RecommendationMetrics recommendationMetrics) {
         this.redisCacheService = redisCacheService;
         this.recommendationProfileService = recommendationProfileService;
+        this.recommendationMetrics = recommendationMetrics;
     }
 
     public void addFavorite(String userId, Item item) {
+        addFavorite(userId, item, false);
+    }
+
+    public void addFavorite(String userId, Item item, boolean fromRecommendation) {
         MySQLConnection connection = new MySQLConnection();
         connection.setFavoriteItems(userId, item);
         connection.close();
 
         redisCacheService.invalidateUserCaches(userId);
         recommendationProfileService.invalidateCorpusCache();
+        if (fromRecommendation) {
+            recommendationMetrics.recordFavoriteFromRecommendation();
+        }
     }
 
     public Set<Item> getFavorites(String userId) {

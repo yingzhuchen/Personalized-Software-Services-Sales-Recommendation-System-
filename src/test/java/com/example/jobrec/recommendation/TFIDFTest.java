@@ -48,4 +48,18 @@ class TFIDFTest {
         assertEquals("crm", top.get(1).getKey());
         assertEquals("cloud", top.get(2).getKey());
     }
+
+    @Test
+    void getTopKeywords_breaksTiesByKeywordName() {
+        Map<String, Double> scores = new HashMap<>();
+        scores.put("crm", 0.5);
+        scores.put("ai", 0.5);
+        scores.put("cloud", 0.5);
+
+        List<Map.Entry<String, Double>> top = tfidf.getTopKeywords(scores, 3);
+
+        assertEquals("ai", top.get(0).getKey());
+        assertEquals("cloud", top.get(1).getKey());
+        assertEquals("crm", top.get(2).getKey());
+    }
 }

@@ -38,7 +38,13 @@ public class TFIDF {
 
     public List<Map.Entry<String, Double>> getTopKeywords(Map<String, Double> scores, int topK) {
         List<Map.Entry<String, Double>> keywordList = new ArrayList<>(scores.entrySet());
-        keywordList.sort((e1, e2) -> Double.compare(e2.getValue(), e1.getValue()));
+        keywordList.sort((e1, e2) -> {
+            int byScore = Double.compare(e2.getValue(), e1.getValue());
+            if (byScore != 0) {
+                return byScore;
+            }
+            return e1.getKey().compareTo(e2.getKey());
+        });
         if (keywordList.size() > topK) {
             return keywordList.subList(0, topK);
         }
