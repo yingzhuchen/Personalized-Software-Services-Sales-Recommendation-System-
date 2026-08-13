@@ -1,0 +1,56 @@
+
+=== Multi-scale stress (LargeCatalog-style volume) ===
+[1000 cat | 500 users] 3×3 qualInt=219 serp=0.0 | 10×10 qualInt=496 serp=0.0
+[5000 cat | 2000 users] 3×3 qualInt=1132 serp=0.0 | 10×10 qualInt=2414 serp=0.0
+
+=== Why 3×3 is the production default ===
+3×3 (production)     ext=5.0  extScore=0.423  top3/tail=0.376/0.000  serp=3  ext/call=1.67  composite=0.748
+11×10 (aggressive)   ext=5.0  extScore=0.534  top3/tail=0.343/0.256  serp=10  ext/call=0.52  composite=0.410
+
+Composite rank: 3×3 = #1 / 16
+3×3 ext/call=1.67 vs 11×10 ext/call=0.52
+
+=== Full grid: TopK × Serp cap (120 catalog, 2000 users, market slots reserved) ===
+120-catalog market benchmark
+Rank  Config  QualInt  AvgExt  ExtScore  Top3/Tail     SerpCalls  Ext/Call  Composite
+1     3×3          23     5.0     0.423  0.376/0.000           3.0      1.67      0.748
+2     3×10         23     5.0     0.426  0.376/0.267           3.0      1.67      0.680
+3     3×8          23     5.0     0.427  0.376/0.271           3.0      1.67      0.677
+4     3×5          23     5.0     0.429  0.376/0.282           3.0      1.67      0.670
+5     5×3          35     5.0     0.468  0.363/0.000           4.9      1.03      0.633
+6     5×10         35     5.0     0.467  0.363/0.269           4.9      1.03      0.557
+7     5×8          35     5.0     0.469  0.363/0.273           4.9      1.03      0.555
+8     5×5          35     5.0     0.473  0.363/0.283           4.9      1.03      0.549
+9     8×3          49     5.0     0.517  0.351/0.000           7.4      0.67      0.544
+10    11×3         56     5.0     0.543  0.343/0.000           9.6      0.52      0.488
+11    8×10         49     5.0     0.510  0.351/0.263           7.4      0.67      0.465
+12    8×8          49     5.0     0.512  0.351/0.266           7.4      0.67      0.464
+13    8×5          49     5.0     0.517  0.351/0.278           7.4      0.67      0.457
+14    11×10        56     5.0     0.534  0.343/0.256           9.6      0.52      0.410
+15    11×8         56     5.0     0.535  0.343/0.259           9.6      0.52      0.408
+16    11×5         56     5.0     0.540  0.343/0.271           9.6      0.52      0.401
+>>> 3×3 rank #1, composite=0.748, ext/call=1.67
+
+=== Serp cap decay (topK=3, positions 1-3 vs 4+) ===
+Cap  AvgExt  ExtScore  Top3Score  TailScore  TailDrop%  ExtPerCall  Composite
+3        5.0      0.423      0.376      0.000       0.0       1.67      0.748
+5        5.0      0.429      0.376      0.282      24.9       1.67      0.670
+8        5.0      0.427      0.376      0.271      27.8       1.67      0.677
+10       5.0      0.426      0.376      0.267      29.0       1.67      0.680
+15       5.0      0.426      0.376      0.262      30.4       1.67      0.683
+20       5.0      0.425      0.376      0.253      32.7       1.67      0.689
+
+=== Top-K cost efficiency (marketCap=3, market slots reserved) ===
+TopK  AvgExt  ExtScore  SerpCalls  ExtPerCall  TfidfCov%  Composite
+3        5.0      0.423          3        1.67       36.5      0.748
+5        5.0      0.468          5        1.03       52.7      0.633
+8        5.0      0.517          7        0.67       69.1      0.544
+11       5.0      0.543         10        0.52       80.2      0.488
+
+3→11: serp calls 3→10 (+220%), external 5.0→5.0 — capped by max-market-results=5
+
+=== Large catalog (1000 internal): Serp mostly skipped ===
+Config  QualInternal  AvgExt  MarketUsers%  SerpCalls
+3×3             219     0.0            0.0        0.0
+5×5             334     0.0            0.0        0.0
+10×10            496     0.0            0.0        0.0
